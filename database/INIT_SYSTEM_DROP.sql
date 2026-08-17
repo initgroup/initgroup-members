@@ -1,0 +1,157 @@
+/*
+ * INIT Members 전체 스키마 제거 스크립트
+ *
+ * 주의: 이 파일은 시스템 DB의 INIT$_ 오브젝트와 모든 데이터를 제거합니다.
+ * 백업 및 대상 스키마 확인 후 DB 소유자 권한으로만 수동 실행합니다.
+ * SQLcl/SQL*Plus 실행 예: @database/INIT_SYSTEM_DROP.sql INIT_OWNER
+ */
+DEFINE INIT_EXPECTED_SCHEMA = '&1'
+
+DECLARE
+    V_EXTERNAL_FK_COUNT NUMBER := 0;
+    V_REFERENCE_GRANT_COUNT NUMBER := 0;
+    V_EXPECTED_SCHEMA VARCHAR2(128) := UPPER(TRIM('&&INIT_EXPECTED_SCHEMA'));
+    V_SESSION_USER VARCHAR2(128) := UPPER(SYS_CONTEXT('USERENV', 'SESSION_USER'));
+    V_CURRENT_SCHEMA VARCHAR2(128) := UPPER(SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'));
+
+    PROCEDURE DROP_TABLE_IF_EXISTS(
+        P_TABLE_NAME IN VARCHAR2
+    ) IS
+    BEGIN
+        EXECUTE IMMEDIATE
+            'DROP TABLE "' || P_TABLE_NAME || '" PURGE';
+        DBMS_OUTPUT.PUT_LINE('DROPPED TABLE ' || P_TABLE_NAME);
+    EXCEPTION
+        WHEN OTHERS THEN
+            IF SQLCODE = -942 THEN
+                DBMS_OUTPUT.PUT_LINE('SKIPPED MISSING TABLE ' || P_TABLE_NAME);
+            ELSE
+                RAISE;
+            END IF;
+    END DROP_TABLE_IF_EXISTS;
+BEGIN
+    IF V_EXPECTED_SCHEMA IS NULL
+       OR V_EXPECTED_SCHEMA <> V_SESSION_USER
+       OR V_EXPECTED_SCHEMA <> V_CURRENT_SCHEMA THEN
+        RAISE_APPLICATION_ERROR(
+            -20000
+          , 'DROP 중단: 실행 인자, SESSION_USER, CURRENT_SCHEMA가 모두 일치해야 합니다.'
+        );
+    END IF;
+
+    /*
+     * CASCADE CONSTRAINTS가 관리 대상 밖의 FK를 조용히 제거하지 않도록
+     * 현재 스키마의 INIT 테이블을 참조하는 외부 제약조건을 먼저 차단합니다.
+     */
+    SELECT COUNT(*)
+      INTO V_EXTERNAL_FK_COUNT
+      FROM ALL_CONSTRAINTS FK
+      JOIN ALL_CONSTRAINTS PK
+        ON PK.OWNER = FK.R_OWNER
+       AND PK.CONSTRAINT_NAME = FK.R_CONSTRAINT_NAME
+     WHERE 1=1
+       AND FK.CONSTRAINT_TYPE = 'R'
+       AND PK.OWNER = V_CURRENT_SCHEMA
+       AND PK.TABLE_NAME IN (
+           'INIT$_TB_PLAN_MONTH'
+         , 'INIT$_TB_PLAN_ASSIGNMENT'
+         , 'INIT$_TB_PLAN_PROJECT'
+         , 'INIT$_TB_PLAN_SCENARIO'
+         , 'INIT$_TB_PROJECT_ASSIGNMENT'
+         , 'INIT$_TB_PROJECT_COMPANY'
+         , 'INIT$_TB_COMPANY_HISTORY'
+         , 'INIT$_TB_COMPANY_EMPLOYEE'
+         , 'INIT$_TB_NOTICE_FILE'
+         , 'INIT$_TB_AUTH_SESSION'
+         , 'INIT$_TB_PROJECT'
+         , 'INIT$_TB_COMPANY'
+         , 'INIT$_TB_SYSTEM_SETTING'
+         , 'INIT$_TB_NOTICE'
+         , 'INIT$_TB_AI_TRAINING_RUN'
+         , 'INIT$_TB_USER'
+       )
+       AND NOT (
+           FK.OWNER = V_CURRENT_SCHEMA
+           AND FK.TABLE_NAME IN (
+               'INIT$_TB_PLAN_MONTH'
+             , 'INIT$_TB_PLAN_ASSIGNMENT'
+             , 'INIT$_TB_PLAN_PROJECT'
+             , 'INIT$_TB_PLAN_SCENARIO'
+             , 'INIT$_TB_PROJECT_ASSIGNMENT'
+             , 'INIT$_TB_PROJECT_COMPANY'
+             , 'INIT$_TB_COMPANY_HISTORY'
+             , 'INIT$_TB_COMPANY_EMPLOYEE'
+             , 'INIT$_TB_NOTICE_FILE'
+             , 'INIT$_TB_AUTH_SESSION'
+             , 'INIT$_TB_PROJECT'
+             , 'INIT$_TB_COMPANY'
+             , 'INIT$_TB_SYSTEM_SETTING'
+             , 'INIT$_TB_NOTICE'
+             , 'INIT$_TB_AI_TRAINING_RUN'
+             , 'INIT$_TB_USER'
+           )
+       );
+
+    IF V_EXTERNAL_FK_COUNT > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20001
+          , 'DROP 중단: 관리 대상 밖에서 INIT 테이블을 참조하는 FK가 있습니다.'
+        );
+    END IF;
+
+    /*
+     * ALL_CONSTRAINTS에서 보이지 않는 타 스키마 FK 가능성도 REFERENCES
+     * 권한 단계에서 차단합니다. 테이블 권한과 열 단위 권한을 모두 확인합니다.
+     */
+    SELECT COUNT(*)
+      INTO V_REFERENCE_GRANT_COUNT
+      FROM (
+            SELECT GRANTEE
+                 , TABLE_NAME
+              FROM ALL_TAB_PRIVS
+             WHERE TABLE_SCHEMA = V_CURRENT_SCHEMA
+               AND PRIVILEGE = 'REFERENCES'
+            UNION ALL
+            SELECT GRANTEE
+                 , TABLE_NAME
+              FROM ALL_COL_PRIVS
+             WHERE TABLE_SCHEMA = V_CURRENT_SCHEMA
+               AND PRIVILEGE = 'REFERENCES'
+           )
+     WHERE 1=1
+       AND GRANTEE <> V_CURRENT_SCHEMA
+       AND TABLE_NAME IN (
+           'INIT$_TB_PLAN_MONTH', 'INIT$_TB_PLAN_ASSIGNMENT', 'INIT$_TB_PLAN_PROJECT'
+         , 'INIT$_TB_PLAN_SCENARIO', 'INIT$_TB_PROJECT_ASSIGNMENT', 'INIT$_TB_PROJECT_COMPANY'
+         , 'INIT$_TB_COMPANY_HISTORY', 'INIT$_TB_COMPANY_EMPLOYEE', 'INIT$_TB_NOTICE_FILE'
+         , 'INIT$_TB_AUTH_SESSION', 'INIT$_TB_PROJECT', 'INIT$_TB_COMPANY'
+         , 'INIT$_TB_SYSTEM_SETTING', 'INIT$_TB_NOTICE', 'INIT$_TB_AI_TRAINING_RUN'
+         , 'INIT$_TB_USER'
+       );
+
+    IF V_REFERENCE_GRANT_COUNT > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20002
+          , 'DROP 중단: INIT 테이블에 타 스키마 REFERENCES 권한이 있습니다.'
+        );
+    END IF;
+
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PLAN_MONTH');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PLAN_ASSIGNMENT');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PLAN_PROJECT');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PLAN_SCENARIO');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PROJECT_ASSIGNMENT');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PROJECT_COMPANY');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_COMPANY_HISTORY');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_COMPANY_EMPLOYEE');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_NOTICE_FILE');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_AUTH_SESSION');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_PROJECT');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_COMPANY');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_SYSTEM_SETTING');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_NOTICE');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_AI_TRAINING_RUN');
+    DROP_TABLE_IF_EXISTS('INIT$_TB_USER');
+END;
+/
+UNDEFINE INIT_EXPECTED_SCHEMA

@@ -1,0 +1,58 @@
+<section class="page" id="page-partner-management" aria-labelledby="partnerManagementTitle">
+    <header class="page-header">
+        <div><h2 id="partnerManagementTitle">협력업체 관리</h2><p>협력업체 회사정보와 프로젝트에 투입할 소속 직원을 함께 관리합니다.</p></div>
+        <div class="page-actions"><button id="newPartnerButton" class="button button-primary" type="button">새 협력업체</button></div>
+    </header>
+
+    <section class="panel" aria-labelledby="partnerListTitle">
+        <div class="panel-header"><div><h3 id="partnerListTitle">협력업체 목록</h3><p>회사를 선택하면 기본정보와 소속 직원이 표시됩니다.</p></div></div>
+        <div class="table-wrap"><table class="data-table company-management-table"><thead><tr><th>회사명</th><th>사업자번호</th><th>대표자</th><th>연락처</th><th>사용</th></tr></thead><tbody id="partnerTableBody"></tbody></table></div>
+        <p id="partnerListStatus" class="inline-status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="partnerEditorTitle">
+        <div class="panel-header"><div><h3 id="partnerEditorTitle">협력업체 등록</h3><p>프로젝트 참여회사 선택에 사용할 회사 기본정보입니다.</p></div></div>
+        <form id="partnerForm">
+            <input id="partnerCompanyId" type="hidden">
+            <div class="form-grid company-form-grid">
+                <label class="field"><span class="required">회사명</span><input id="partnerCompanyName" class="input" maxlength="200" required></label>
+                <label class="field"><span>사업자번호</span><input id="partnerBusinessNumber" class="input" maxlength="30"></label>
+                <label class="field"><span>대표자</span><input id="partnerRepresentativeName" class="input" maxlength="100"></label>
+                <label class="field"><span>사용 여부</span><select id="partnerUseYn" class="select"><option value="Y">사용</option><option value="N">미사용</option></select></label>
+                <label class="field"><span>업태</span><input id="partnerBusinessType" class="input" maxlength="200"></label>
+                <label class="field"><span>종목</span><input id="partnerBusinessItem" class="input" maxlength="300"></label>
+                <label class="field"><span>이메일</span><input id="partnerEmail" class="input" type="email" maxlength="300"></label>
+                <label class="field"><span>전화번호</span><input id="partnerPhone" class="input" maxlength="50"></label>
+                <label class="field field-span-all"><span>주소</span><input id="partnerAddress" class="input" maxlength="500"></label>
+                <label class="field"><span>웹사이트</span><input id="partnerWebsiteUrl" class="input" type="url" maxlength="500"></label>
+                <label class="field"><span>설립일</span><input id="partnerEstablishedDate" class="input" type="date"></label>
+                <label class="field field-span-all"><span>비고</span><textarea id="partnerNote" class="textarea" maxlength="2000"></textarea></label>
+            </div>
+            <p id="partnerEditorStatus" class="inline-status" aria-live="polite"></p>
+            <div class="form-actions"><button id="deletePartnerButton" class="button button-danger" type="button" hidden>삭제</button><button id="clearPartnerButton" class="button button-secondary" type="button">새로 입력</button><button class="button button-primary" type="submit">저장</button></div>
+        </form>
+    </section>
+
+    <section id="partnerEmployeePanel" class="panel" aria-labelledby="partnerEmployeeTitle" hidden>
+        <div class="panel-header"><div><h3 id="partnerEmployeeTitle">협력업체 직원</h3><p id="partnerEmployeeDescription">선택한 회사의 직원을 관리합니다.</p></div><button id="newPartnerEmployeeButton" class="button button-primary" type="button">새 직원</button></div>
+        <div class="table-wrap"><table class="data-table company-employee-table"><thead><tr><th>직원명</th><th>사번</th><th>부서</th><th>직급/직책</th><th>연락처</th><th>재직</th></tr></thead><tbody id="partnerEmployeeTableBody"></tbody></table></div>
+        <form id="partnerEmployeeForm" class="company-employee-form">
+            <input id="partnerEmployeeId" type="hidden">
+            <div class="form-grid company-form-grid">
+                <label class="field"><span class="required">직원명</span><input id="partnerEmployeeName" class="input" maxlength="200" required></label>
+                <label class="field"><span>사번</span><input id="partnerEmployeeNo" class="input" maxlength="100"></label>
+                <label class="field"><span>부서</span><input id="partnerEmployeeDepartment" class="input" maxlength="200"></label>
+                <label class="field"><span>직급</span><input id="partnerEmployeePosition" class="input" maxlength="100"></label>
+                <label class="field"><span>직책</span><input id="partnerEmployeeJobTitle" class="input" maxlength="100"></label>
+                <label class="field"><span>재직 여부</span><select id="partnerEmployeeUseYn" class="select"><option value="Y">재직</option><option value="N">퇴사/미사용</option></select></label>
+                <label class="field"><span>이메일</span><input id="partnerEmployeeEmail" class="input" type="email" maxlength="300"></label>
+                <label class="field"><span>휴대전화</span><input id="partnerEmployeeMobile" class="input" maxlength="50"></label>
+                <label class="field"><span>입사일</span><input id="partnerEmployeeJoinDate" class="input" type="date"></label>
+                <label class="field"><span>퇴사일</span><input id="partnerEmployeeLeaveDate" class="input" type="date"></label>
+                <label class="field field-span-all"><span>비고</span><textarea id="partnerEmployeeNote" class="textarea" maxlength="2000"></textarea></label>
+            </div>
+            <p id="partnerEmployeeStatus" class="inline-status" aria-live="polite"></p>
+            <div class="form-actions"><button id="deletePartnerEmployeeButton" class="button button-danger" type="button" hidden>삭제</button><button id="clearPartnerEmployeeButton" class="button button-secondary" type="button">새로 입력</button><button class="button button-primary" type="submit">저장</button></div>
+        </form>
+    </section>
+</section>

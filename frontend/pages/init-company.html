@@ -1,0 +1,41 @@
+<section class="page" id="page-init-company" aria-labelledby="initCompanyTitle">
+    <header class="page-header"><div><h2 id="initCompanyTitle">인아이티 관리</h2><p>본사 회사 기본정보와 주요 변경 이력을 관리합니다.</p></div></header>
+    <section class="panel" aria-labelledby="initCompanyBasicTitle">
+        <div class="panel-header"><div><h3 id="initCompanyBasicTitle">본사 기본정보</h3><p>프로젝트 참여회사와 내부 임직원의 소속회사로 사용됩니다.</p></div></div>
+        <form id="initCompanyForm">
+            <input id="initCompanyId" type="hidden">
+            <div class="form-grid company-form-grid">
+                <label class="field"><span class="required">회사명</span><input id="initCompanyName" class="input" maxlength="200" value="인아이티" required></label>
+                <label class="field"><span>사업자번호</span><input id="initBusinessNumber" class="input" maxlength="30"></label>
+                <label class="field"><span>대표자</span><input id="initRepresentativeName" class="input" maxlength="100"></label>
+                <label class="field"><span>사용 여부</span><select id="initCompanyUseYn" class="select"><option value="Y">사용</option><option value="N">미사용</option></select></label>
+                <label class="field"><span>업태</span><input id="initBusinessType" class="input" maxlength="200"></label>
+                <label class="field"><span>종목</span><input id="initBusinessItem" class="input" maxlength="300"></label>
+                <label class="field"><span>이메일</span><input id="initCompanyEmail" class="input" type="email" maxlength="300"></label>
+                <label class="field"><span>전화번호</span><input id="initCompanyPhone" class="input" maxlength="50"></label>
+                <label class="field field-span-all"><span>주소</span><input id="initCompanyAddress" class="input" maxlength="500"></label>
+                <label class="field"><span>웹사이트</span><input id="initWebsiteUrl" class="input" type="url" maxlength="500"></label>
+                <label class="field"><span>설립일</span><input id="initEstablishedDate" class="input" type="date"></label>
+                <label class="field field-span-all"><span>비고</span><textarea id="initCompanyNote" class="textarea" maxlength="2000"></textarea></label>
+            </div>
+            <p id="initCompanyStatus" class="inline-status" aria-live="polite"></p>
+            <div class="form-actions"><button class="button button-primary" type="submit">본사정보 저장</button></div>
+        </form>
+    </section>
+
+    <section id="initHistoryPanel" class="panel" aria-labelledby="initHistoryTitle" hidden>
+        <div class="panel-header"><div><h3 id="initHistoryTitle">회사 이력</h3><p>설립, 상호·주소 변경, 인증과 주요 이력을 기록합니다.</p></div><button id="newInitHistoryButton" class="button button-primary" type="button">새 이력</button></div>
+        <div class="table-wrap"><table class="data-table company-history-table"><thead><tr><th>일자</th><th>유형</th><th>제목</th><th>내용</th></tr></thead><tbody id="initHistoryTableBody"></tbody></table></div>
+        <form id="initHistoryForm" class="company-history-form">
+            <input id="initHistoryId" type="hidden">
+            <div class="form-grid company-form-grid">
+                <label class="field"><span class="required">이력일</span><input id="initHistoryDate" class="input" type="date" required></label>
+                <label class="field"><span class="required">유형</span><select id="initHistoryType" class="select" required><option value="ESTABLISHED">설립</option><option value="NAME_CHANGE">상호 변경</option><option value="ADDRESS_CHANGE">주소 변경</option><option value="CERTIFICATION">인증</option><option value="OTHER">기타</option></select></label>
+                <label class="field field-span-all"><span class="required">제목</span><input id="initHistoryTitleInput" class="input" maxlength="300" required></label>
+                <label class="field field-span-all"><span>내용</span><textarea id="initHistoryContent" class="textarea" maxlength="2000"></textarea></label>
+            </div>
+            <p id="initHistoryStatus" class="inline-status" aria-live="polite"></p>
+            <div class="form-actions"><button id="deleteInitHistoryButton" class="button button-danger" type="button" hidden>삭제</button><button id="clearInitHistoryButton" class="button button-secondary" type="button">새로 입력</button><button class="button button-primary" type="submit">이력 저장</button></div>
+        </form>
+    </section>
+</section>

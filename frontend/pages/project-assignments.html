@@ -5,6 +5,7 @@
             <p>프로젝트 참여회사 비중과 임직원별 투입기간, M/M, 단가, 매출 및 영업이익을 관리합니다.</p>
         </div>
         <div class="page-actions">
+            <button id="openAssignmentBoardButton" class="button button-secondary" type="button">확정 투입 배치 보드</button>
             <button id="newAssignmentButton" class="button button-primary" type="button">새 투입인력</button>
         </div>
     </header>
@@ -16,12 +17,19 @@
                 <p>관리할 프로젝트를 먼저 선택해 주세요.</p>
             </div>
         </div>
-        <label class="field project-assignment-project-field">
-            <span class="required">프로젝트</span>
-            <select id="assignmentProjectSelect" class="select" required>
-                <option value="">프로젝트 선택</option>
-            </select>
-        </label>
+        <div class="project-assignment-project-filters">
+            <label class="field project-assignment-year-field">
+                <span class="required">연도</span>
+                <select id="assignmentProjectYearSelect" class="select" required></select>
+            </label>
+            <label class="field project-assignment-project-field">
+                <span class="required">프로젝트</span>
+                <select id="assignmentProjectSelect" class="select" required>
+                    <option value="">프로젝트 선택</option>
+                </select>
+            </label>
+        </div>
+        <p id="assignmentProjectPeriod" class="project-assignment-period" aria-live="polite" hidden></p>
         <p id="assignmentPageStatus" class="inline-status" aria-live="polite"></p>
         <div id="assignmentSummary" class="metric-grid project-assignment-summary" hidden>
             <article class="metric-card"><span>프로젝트 수주금액</span><strong id="summaryContractAmount">0원</strong></article>
@@ -51,7 +59,7 @@
         </div>
         <form id="projectCompanyForm" class="project-company-form">
             <input id="projectCompanyId" type="hidden">
-            <label class="field"><span class="required">회사명</span><input id="projectCompanyName" class="input" maxlength="200" required></label>
+            <label class="field"><span class="required">회사명</span><select id="projectCompanyMaster" class="select" required><option value="">등록 회사 선택</option></select></label>
             <label class="field"><span class="required">참여유형</span><select id="projectCompanyType" class="select" required><option value="LEAD">주관사</option><option value="CONSORTIUM">컨소사</option><option value="SUBCONTRACT">하도급</option></select></label>
             <label class="field"><span class="required">비중 (%)</span><input id="projectCompanyShareRate" class="input" type="number" min="0" max="100" step="0.01" value="0" required></label>
             <label class="field project-company-note"><span>비고</span><input id="projectCompanyNote" class="input" maxlength="1000"></label>
@@ -69,8 +77,8 @@
         <form id="assignmentForm">
             <input id="assignmentId" type="hidden">
             <div class="form-grid assignment-form-grid">
-                <label class="field"><span class="required">임직원</span><select id="assignmentEmployee" class="select" required></select></label>
-                <label class="field"><span>소속 참여회사</span><select id="assignmentCompany" class="select"><option value="">직접 투입/미지정</option></select></label>
+                <label class="field"><span class="required">소속회사</span><select id="assignmentCompany" class="select" required><option value="">소속회사 선택</option></select></label>
+                <label class="field"><span class="required">임직원</span><select id="assignmentEmployee" class="select" required disabled><option value="">소속회사를 먼저 선택해 주세요</option></select></label>
                 <label class="field"><span class="required">투입 시작일</span><input id="assignmentStartDate" class="input" type="date" required></label>
                 <label class="field"><span class="required">투입 종료일</span><input id="assignmentEndDate" class="input" type="date" required></label>
                 <label class="field"><span class="required">배분 방식</span><select id="assignmentAllocationType" class="select" required><option value="MONTHLY">월별 M/M</option><option value="WEEKLY">매주 지정 요일</option></select></label>
@@ -86,4 +94,49 @@
             <div class="form-actions"><button id="deleteAssignmentButton" class="button button-danger" type="button" hidden>삭제</button><button id="clearAssignmentButton" class="button button-secondary" type="button">새로 입력</button><button class="button button-primary" type="submit">저장</button></div>
         </form>
     </section>
+
+    <dialog id="assignmentBoardDialog" class="dialog assignment-board-dialog" aria-labelledby="assignmentBoardTitle">
+        <header class="dialog-header">
+            <div>
+                <p class="page-kicker">CONFIRMED STAFFING BOARD</p>
+                <h2 id="assignmentBoardTitle">확정 투입 배치 보드</h2>
+                <p>인력을 프로젝트의 시작 월에 놓거나 기존 배치 카드를 다른 월로 옮긴 뒤 상세 조건을 검토해 저장하세요.</p>
+            </div>
+            <button id="closeAssignmentBoardButton" class="icon-button" type="button" aria-label="배치 보드 닫기">×</button>
+        </header>
+        <div class="dialog-body assignment-board-dialog-body">
+            <div class="assignment-board-toolbar">
+                <strong id="assignmentBoardYearLabel"></strong>
+                <label class="field assignment-board-search-field">
+                    <span>인력 검색</span>
+                    <input id="assignmentBoardWorkerSearch" class="input" type="search" placeholder="이름·회사·부서">
+                </label>
+                <button id="refreshAssignmentBoardButton" class="button button-secondary button-small" type="button">새로고침</button>
+            </div>
+            <p id="assignmentBoardStatus" class="inline-status" aria-live="polite"></p>
+            <div class="assignment-board-workspace">
+                <aside class="assignment-board-pool" aria-labelledby="assignmentBoardPoolTitle">
+                    <div class="assignment-board-section-heading">
+                        <div><h3 id="assignmentBoardPoolTitle">가용 인력</h3><p>드래그하거나 먼저 선택하세요.</p></div>
+                        <span id="assignmentBoardWorkerCount" class="count-badge">0명</span>
+                    </div>
+                    <p id="assignmentBoardSelection" class="assignment-board-selection" aria-live="polite">선택한 인력이 없습니다.</p>
+                    <div id="assignmentBoardWorkerList" class="assignment-board-worker-list"></div>
+                </aside>
+                <section class="assignment-board-canvas" aria-labelledby="assignmentBoardCanvasTitle">
+                    <div class="assignment-board-section-heading">
+                        <div><h3 id="assignmentBoardCanvasTitle">프로젝트 타임라인</h3><p>인력 드롭은 신규 배치, 카드의 월 이동은 기간 수정으로 연결됩니다.</p></div>
+                    </div>
+                    <div class="assignment-board-scroll">
+                        <div id="assignmentBoardMonthHeader" class="assignment-board-month-header" aria-hidden="true"></div>
+                        <div id="assignmentBoardLanes" class="assignment-board-lanes"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+        <footer class="dialog-footer">
+            <span class="assignment-board-help">드롭 후 기존 상세 편집기에서 참여회사·단가·M/M을 확인하고 저장합니다.</span>
+            <button id="assignmentBoardDoneButton" class="button button-primary" type="button">닫기</button>
+        </footer>
+    </dialog>
 </section>

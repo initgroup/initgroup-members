@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,11 +70,17 @@ def public_portal_preferences():
             "data": {"homepageSkin": portal_skin},
         }
     except Exception as exc:
+        if isinstance(exc, oracledb.Error):
+            logger.warning(
+                "Portal preferences DB query failed; using the default skin.",
+                exc_info=True,
+            )
+            return {
+                "status": "success",
+                "data": {"homepageSkin": DEFAULT_HOMEPAGE_SKIN},
+            }
         logger.exception("Portal preferences could not be loaded.")
-        raise HTTPException(
-            status_code=500,
-            detail="Portal preferences could not be loaded.",
-        ) from exc
+        raise HTTPException(status_code=500, detail="포털 설정을 불러오지 못했습니다.") from exc
 
 
 @admin_router.get("")
@@ -91,8 +98,12 @@ def get_site_preferences():
     except Exception as exc:
         logger.exception("Administrator portal preferences could not be loaded.")
         raise HTTPException(
-            status_code=500,
-            detail="Portal preferences could not be loaded.",
+            status_code=503 if isinstance(exc, oracledb.Error) else 500,
+            detail=(
+                "시스템 DB에 연결하지 못했습니다. DB 접속 상태를 확인해 주세요."
+                if isinstance(exc, oracledb.Error)
+                else "포털 설정을 불러오지 못했습니다."
+            ),
         ) from exc
 
 
@@ -131,7 +142,11 @@ def update_site_preferences(payload: SitePreferenceUpdateRequest, request: Reque
             "System settings table is not installed. "
             "Run database/INIT_SYSTEM_ALT.sql for an existing database."
             if _oracle_error_code(exc) == 942
-            else "Portal preferences could not be saved."
+            else (
+                "시스템 DB에 연결하지 못했습니다. DB 접속 상태를 확인해 주세요."
+                if isinstance(exc, oracledb.Error)
+                else "포털 설정을 저장하지 못했습니다."
+            )
         )
         raise HTTPException(status_code=503, detail=detail) from exc
     finally:

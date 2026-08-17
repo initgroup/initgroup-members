@@ -203,7 +203,7 @@
             });
 
             const data = Common.data.get(payload) || payload;
-            const message = data?.message || payload?.message || "직원 계정 신청을 저장했습니다.";
+            const message = data?.message || payload?.message || "경영진 계정 신청을 저장했습니다.";
             Common.ui.toast(message, "success", { duration: 6000 });
             query("#signupForm")?.reset();
             syncAdminKeyField();
@@ -211,7 +211,7 @@
             query("#loginId")?.focus();
         } catch (error) {
             if (error?.name === "AbortError") return;
-            Common.ui.setInlineStatus(status, error.message || "직원 계정 신청을 저장하지 못했습니다.", "error");
+            Common.ui.setInlineStatus(status, error.message || "경영진 계정 신청을 저장하지 못했습니다.", "error");
         } finally {
             if (submitButton) submitButton.disabled = false;
         }

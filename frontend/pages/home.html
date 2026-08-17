@@ -1,191 +1,74 @@
-<section class="page home-dashboard" id="page-home" aria-labelledby="homeTitle">
-    <header class="page-header home-page-header">
+<section class="page home-dashboard executive-home" id="page-home" aria-labelledby="homeTitle">
+    <header class="page-header executive-home-header">
         <div>
-            <p class="page-kicker">INTELLIGENCE COMMAND CENTER</p>
+            <p class="page-kicker">EXECUTIVE BUSINESS CONTROL</p>
             <div class="home-title-row">
-                <h2 id="homeTitle">데이터 인사이트</h2>
-                <span class="home-live-badge"><i aria-hidden="true"></i> LIVE</span>
+                <h2 id="homeTitle">경영 현황</h2>
+                <span id="homeScenarioBadge" class="executive-scenario-badge">계획안 확인 중</span>
             </div>
-            <p id="homeGreeting">오늘의 AI 학습과 서비스 통계 현황을 확인하세요.</p>
+            <p id="homeGreeting">사업 파이프라인과 인력계획, 예상 손익을 한눈에 확인하세요.</p>
         </div>
-        <div class="home-header-actions">
+        <div class="executive-home-actions">
+            <label class="field executive-year-field">
+                <span>기준연도</span>
+                <select id="homeYearSelect" class="select"></select>
+            </label>
+            <button id="homeOpenPlanningButton" class="button button-primary" type="button">연간 계획 열기</button>
+            <button id="homeRefreshButton" class="button button-secondary" type="button">새로고침</button>
             <span id="homeUpdatedAt" class="home-updated-at">업데이트 대기</span>
-            <button id="homeRefreshButton" class="button button-secondary" type="button">
-                <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20 6v5h-5"></path>
-                    <path d="M19 11a7.5 7.5 0 1 0 .2 5"></path>
-                </svg>
-                데이터 새로고침
-            </button>
         </div>
     </header>
 
     <p id="homeStatus" class="inline-status home-dashboard-status" aria-live="polite"></p>
+    <div id="homeSchemaWarnings" class="executive-schema-warnings" aria-live="polite" hidden></div>
 
-    <section class="metric-grid home-metric-grid" aria-label="핵심 지표">
-        <article class="metric-card metric-users">
-            <div class="metric-card-head">
-                <span>전체 사용자</span>
-                <i class="metric-icon" aria-hidden="true">01</i>
-            </div>
-            <strong id="homeUserCount">-</strong>
-            <p id="homeUserDetail" class="metric-detail">누적 가입 사용자</p>
-        </article>
-        <article class="metric-card metric-active">
-            <div class="metric-card-head">
-                <span>사용자 활성률</span>
-                <i class="metric-icon" aria-hidden="true">02</i>
-            </div>
-            <strong id="homeActiveRate">-</strong>
-            <p id="homeActiveUserDetail" class="metric-detail">활성 사용자 집계 중</p>
-        </article>
-        <article class="metric-card metric-ai">
-            <div class="metric-card-head">
-                <span>AI 학습 완료</span>
-                <i class="metric-icon" aria-hidden="true">AI</i>
-            </div>
-            <strong id="homeAiCompletedCount">-</strong>
-            <p id="homeAiDetail" class="metric-detail">최근 30일 학습 실행</p>
-        </article>
-        <article class="metric-card metric-notice">
-            <div class="metric-card-head">
-                <span>게시 인사이트</span>
-                <i class="metric-icon" aria-hidden="true">04</i>
-            </div>
-            <strong id="homeNoticeCount">-</strong>
-            <p class="metric-detail">현재 게시 중인 공지</p>
-        </article>
+    <section class="executive-kpi-grid" aria-label="경영 핵심 지표">
+        <article class="executive-kpi-card is-pipeline"><span>입찰 검토 대상</span><strong id="homeBidTargetCount">0</strong><small id="homeProjectCountDetail">등록 사업 0건</small></article>
+        <article class="executive-kpi-card is-award"><span>가중 예상수주</span><strong id="homeWeightedAward">0원</strong><small id="homeAwardDetail">수주 확률 반영</small></article>
+        <article class="executive-kpi-card is-sales"><span>계획 매출</span><strong id="homePlannedSales">0원</strong><small id="homeSalesDetail">인력 월단가 기준</small></article>
+        <article class="executive-kpi-card is-profit"><span>계획 영업이익</span><strong id="homeOperatingProfit">0원</strong><small id="homeProfitRate">이익률 0%</small></article>
+        <article class="executive-kpi-card is-workforce"><span>계획 투입 / 부족</span><strong><span id="homeAssignmentCount">0</span><em> / </em><span id="homeShortageCount">0</span></strong><small id="homeWorkforceDetail">가용인력 확인 중</small></article>
     </section>
 
-    <section class="dashboard-primary-grid">
-        <article class="panel dashboard-panel ai-trend-panel" aria-labelledby="aiTrendTitle">
-            <div class="panel-header dashboard-panel-header">
-                <div>
-                    <p class="panel-kicker">MODEL PERFORMANCE</p>
-                    <h3 id="aiTrendTitle">AI 학습 정확도 트렌드</h3>
-                    <p>최근 완료된 모델 학습의 정확도 변화를 추적합니다.</p>
-                </div>
-                <span id="aiTrendMode" class="dashboard-data-badge">데이터 확인 중</span>
+    <section class="executive-dashboard-grid">
+        <article class="panel executive-monthly-panel" aria-labelledby="homeMonthlyTitle">
+            <div class="panel-header executive-panel-header">
+                <div><p class="panel-kicker">MONTHLY PROFIT OUTLOOK</p><h3 id="homeMonthlyTitle">월별 예상 매출·원가·이익</h3><p>선택한 계획안의 월별 인력단가를 기준으로 계산합니다.</p></div>
+                <div class="executive-chart-legend" aria-label="차트 범례"><span class="is-sales">매출</span><span class="is-cost">원가</span><span class="is-profit">이익</span></div>
             </div>
-            <div class="ai-chart-layout">
-                <div class="ai-chart-y-axis" aria-hidden="true">
-                    <span>100%</span>
-                    <span>75%</span>
-                    <span>50%</span>
-                </div>
-                <div class="dashboard-chart-frame">
-                    <div id="aiTrendEmpty" class="dashboard-chart-empty" hidden>
-                        <span class="dashboard-empty-symbol" aria-hidden="true">AI</span>
-                        <strong>학습 데이터 연결 대기</strong>
-                        <p>실제 모델 학습이 완료되면 정확도 변화가 이 영역에 표시됩니다.</p>
-                    </div>
-                    <svg id="aiTrendChart" class="ai-trend-chart" viewBox="0 0 720 250" role="img" aria-label="AI 학습 정확도 추이">
-                        <defs>
-                            <linearGradient id="aiTrendAreaGradient" x1="0" x2="0" y1="0" y2="1">
-                                <stop offset="0%" stop-color="var(--color-primary)" stop-opacity="0.28"></stop>
-                                <stop offset="100%" stop-color="var(--color-primary)" stop-opacity="0"></stop>
-                            </linearGradient>
-                        </defs>
-                        <g class="chart-grid-lines" aria-hidden="true">
-                            <line x1="18" y1="24" x2="702" y2="24"></line>
-                            <line x1="18" y1="120" x2="702" y2="120"></line>
-                            <line x1="18" y1="216" x2="702" y2="216"></line>
-                        </g>
-                        <g id="aiTrendChartData"></g>
-                    </svg>
-                    <div id="aiTrendLabels" class="chart-x-labels" aria-hidden="true"></div>
-                </div>
-            </div>
-            <div class="chart-summary-row">
-                <span>최근 정확도 <strong id="aiLatestAccuracy">-</strong></span>
-                <span>평균 정확도 <strong id="aiAverageAccuracy">-</strong></span>
-                <span>학습 데이터 <strong id="aiDatasetRows">-</strong></span>
-            </div>
+            <div id="homeMonthlyPlan" class="executive-monthly-chart" aria-live="polite"></div>
         </article>
 
-        <aside class="panel dashboard-panel ai-operation-panel" aria-labelledby="aiOperationTitle">
-            <div class="panel-header dashboard-panel-header">
-                <div>
-                    <p class="panel-kicker">TRAINING OPERATIONS</p>
-                    <h3 id="aiOperationTitle">AI 모델 운영 현황</h3>
-                    <p>최근 30일 학습 파이프라인 상태입니다.</p>
-                </div>
+        <aside class="panel executive-risk-panel" aria-labelledby="homeRiskTitle">
+            <div class="panel-header executive-panel-header">
+                <div><p class="panel-kicker">DECISION &amp; RISK</p><h3 id="homeRiskTitle">확인할 위험</h3><p>계획 확정 전에 해결할 과부하와 인력 부족입니다.</p></div>
+                <span id="homeRiskCount" class="dashboard-section-count">0건</span>
             </div>
-            <div id="aiOperationVisual" class="ai-operation-visual">
-                <div id="aiStatusDonut" class="ai-status-donut" role="img" aria-label="AI 학습 상태 분포">
-                    <div>
-                        <strong id="aiTotalRuns">0</strong>
-                        <span>전체 실행</span>
-                    </div>
-                </div>
-                <dl id="aiStatusList" class="ai-status-list">
-                    <div class="is-completed">
-                        <dt>완료</dt>
-                        <dd id="aiCompletedRuns">0</dd>
-                    </div>
-                    <div class="is-active">
-                        <dt>진행</dt>
-                        <dd id="aiActiveRuns">0</dd>
-                    </div>
-                    <div class="is-failed">
-                        <dt>실패</dt>
-                        <dd id="aiFailedRuns">0</dd>
-                    </div>
-                </dl>
-                <div id="aiOperationEmpty" class="ai-operation-empty" hidden>
-                    <span class="dashboard-empty-symbol" aria-hidden="true">AI</span>
-                    <strong id="aiOperationEmptyTitle">첫 학습 실행 대기</strong>
-                    <p id="aiOperationEmptyDescription">학습 파이프라인이 실행되면 완료·진행·실패 상태를 집계합니다.</p>
-                </div>
-            </div>
-            <div id="aiIntegrationStatus" class="dashboard-integration-note">
-                AI 학습 테이블 상태를 확인하고 있습니다.
-            </div>
+            <ul id="homeRiskList" class="executive-risk-list"></ul>
         </aside>
     </section>
 
-    <section class="dashboard-secondary-grid">
-        <article class="panel dashboard-panel" aria-labelledby="userGrowthTitle">
-            <div class="panel-header dashboard-panel-header">
-                <div>
-                    <p class="panel-kicker">AUDIENCE GROWTH</p>
-                    <h3 id="userGrowthTitle">사용자 증가 추이</h3>
-                    <p>최근 6개월 신규 가입 사용자입니다.</p>
-                </div>
+    <section class="executive-lower-grid">
+        <article class="panel" aria-labelledby="homeDecisionTitle">
+            <div class="panel-header executive-panel-header">
+                <div><p class="panel-kicker">BID PIPELINE</p><h3 id="homeDecisionTitle">입찰 결정 필요 사업</h3><p>검토·입찰 단계의 사업을 우선순위로 확인하세요.</p></div>
+                <span id="homeDecisionCount" class="dashboard-section-count">0건</span>
             </div>
-            <div id="userGrowthChart" class="bar-chart" role="img" aria-label="최근 6개월 사용자 증가 추이"></div>
+            <div id="homeDecisionList" class="executive-decision-list"></div>
         </article>
 
-        <article class="panel dashboard-panel" aria-labelledby="noticeDistributionTitle">
-            <div class="panel-header dashboard-panel-header">
-                <div>
-                    <p class="panel-kicker">CONTENT STATISTICS</p>
-                    <h3 id="noticeDistributionTitle">게시 콘텐츠 구성</h3>
-                    <p>현재 게시 중인 공지 유형 비중입니다.</p>
-                </div>
+        <article class="panel" aria-labelledby="homeWorkforceTitle">
+            <div class="panel-header executive-panel-header">
+                <div><p class="panel-kicker">WORKFORCE PORTFOLIO</p><h3 id="homeWorkforceTitle">보유인력 구성</h3><p>내부·협력업체·계약 및 프리랜스 인력 현황입니다.</p></div>
+                <span id="homeWorkforceTotal" class="dashboard-section-count">0명</span>
             </div>
-            <div id="noticeTypeDistribution" class="distribution-chart"></div>
-        </article>
-
-        <article class="panel dashboard-panel insight-panel" aria-labelledby="todayInsightTitle">
-            <div class="panel-header dashboard-panel-header">
-                <div>
-                    <p class="panel-kicker">TODAY'S INSIGHT</p>
-                    <h3 id="todayInsightTitle">오늘의 인사이트</h3>
-                    <p>주요 변화를 자동으로 요약합니다.</p>
-                </div>
-            </div>
-            <ul id="homeInsightList" class="insight-list"></ul>
+            <div id="homeWorkforceComposition" class="executive-workforce-composition"></div>
         </article>
     </section>
 
-    <section class="panel dashboard-panel dashboard-notice-panel" aria-labelledby="homeNoticeTitle">
-        <div class="panel-header dashboard-panel-header">
-            <div>
-                <p class="panel-kicker">LATEST BRIEFING</p>
-                <h3 id="homeNoticeTitle">최근 공지사항</h3>
-                <p>새로운 안내와 운영 소식을 확인하세요.</p>
-            </div>
+    <section class="panel dashboard-panel dashboard-notice-panel executive-notice-panel" aria-labelledby="homeNoticeTitle">
+        <div class="panel-header executive-panel-header">
+            <div><p class="panel-kicker">LATEST BRIEFING</p><h3 id="homeNoticeTitle">최근 공지사항</h3><p>경영진에게 공유된 최신 안내와 운영 소식입니다.</p></div>
             <span id="homeNoticeSummary" class="dashboard-section-count">0건</span>
         </div>
         <div id="homeNoticeList" class="notice-list"></div>

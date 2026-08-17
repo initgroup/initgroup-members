@@ -362,6 +362,19 @@ def delete_project(project_id: int):
         if conn:
             conn.rollback()
         logger.exception("Project deletion failed. project_id=%s", project_id)
+        oracle_code = (
+            getattr(exc.args[0], "code", None)
+            if getattr(exc, "args", None)
+            else None
+        )
+        if oracle_code == 2292:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "계획안·참여회사·투입인력에서 사용 중인 프로젝트는 삭제할 수 없습니다. "
+                    "연결된 업무정보를 먼저 확인해 주세요."
+                ),
+            ) from exc
         raise HTTPException(status_code=500, detail="프로젝트를 삭제하지 못했습니다.") from exc
     finally:
         if cursor:

@@ -8,11 +8,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request, Response
+import oracledb
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from backend.auth_context import authenticate_request
 from backend.database import get_db_connection
 from backend.database_helper import SqlLoader
+from backend.routers.planning_scenarios import load_scenario_detail
 
 
 router = APIRouter()
@@ -65,45 +67,83 @@ def _oracle_error_code(exc: Exception) -> int | None:
     return getattr(exc.args[0], "code", None)
 
 
-def _user_growth_payload(row) -> dict[str, Any]:
+def _executive_scenario_payload(source: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not source:
+        return None
+    monthly: dict[str, dict[str, int]] = {}
+    projects = []
+    for project in source.get("projects", []):
+        active_project = str(project.get("bidDecisionCode") or "").upper() != "SKIP"
+        projects.append(
+            {
+                "projectId": project.get("projectId"),
+                "projectName": project.get("projectName"),
+                "bidDecisionCode": project.get("bidDecisionCode"),
+                "winProbability": project.get("winProbability"),
+                "expectedContractAmount": project.get("expectedContractAmount"),
+                "targetHeadcount": project.get("targetHeadcount"),
+                "staffedHeadcount": project.get("staffedHeadcount"),
+                "shortageHeadcount": project.get("shortageHeadcount"),
+            }
+        )
+        for assignment in project.get("assignments", []) if active_project else []:
+            for allocation in assignment.get("monthlyAllocations", []):
+                month = str(allocation.get("month") or "")[:7]
+                if not month:
+                    continue
+                target = monthly.setdefault(
+                    month,
+                    {"salesAmount": 0, "costAmount": 0, "operatingProfit": 0},
+                )
+                target["salesAmount"] += int(allocation.get("salesAmount") or 0)
+                target["costAmount"] += int(allocation.get("costAmount") or 0)
+                target["operatingProfit"] += int(
+                    allocation.get("operatingProfit") or 0
+                )
     return {
-        "monthKey": row[0],
-        "monthLabel": row[1],
-        "userCount": int(row[2] or 0),
-    }
-
-
-def _session_activity_payload(row) -> dict[str, Any]:
-    return {
-        "dateKey": row[0],
-        "dateLabel": row[1],
-        "activeUserCount": int(row[2] or 0),
-    }
-
-
-def _notice_type_payload(row) -> dict[str, Any]:
-    return {
-        "noticeType": row[0] or "INFO",
-        "noticeCount": int(row[1] or 0),
-    }
-
-
-def _ai_training_payload(row) -> dict[str, Any]:
-    return {
-        "trainingRunId": int(row[0]),
-        "modelName": row[1],
-        "modelVersion": row[2] or "",
-        "datasetRowCount": int(row[3] or 0),
-        "epochCount": int(row[4] or 0),
-        "accuracyScore": float(row[5]) if row[5] is not None else None,
-        "lossScore": float(row[6]) if row[6] is not None else None,
-        "runAt": _serialize(row[7]),
+        "scenarioId": source.get("scenarioId"),
+        "planYear": source.get("planYear"),
+        "scenarioName": source.get("scenarioName"),
+        "statusCode": source.get("statusCode"),
+        "revisionNo": source.get("revisionNo"),
+        "summary": source.get("summary") or {},
+        "warnings": [
+            {
+                key: warning.get(key)
+                for key in (
+                    "type",
+                    "employeeName",
+                    "projectId",
+                    "projectName",
+                    "month",
+                    "totalMm",
+                    "shortageHeadcount",
+                    "message",
+                )
+                if warning.get(key) is not None
+            }
+            for warning in source.get("warnings", [])
+        ],
+        "projects": projects,
+        "monthlyFinancials": [
+            {
+                "month": month,
+                "salesAmount": str(amounts["salesAmount"]),
+                "costAmount": str(amounts["costAmount"]),
+                "operatingProfit": str(amounts["operatingProfit"]),
+            }
+            for month, amounts in sorted(monthly.items())
+        ],
     }
 
 
 @router.get("/dashboard")
-def dashboard(request: Request):
+def dashboard(
+    request: Request,
+    planYear: int | None = Query(default=None, ge=1900, le=2100),
+):
     user = authenticate_request(request)
+    plan_year = planYear or (datetime.now().year + 1)
     conn = None
     cursor = None
     try:
@@ -120,28 +160,73 @@ def dashboard(request: Request):
             )
             notice["attachments"] = [_file_payload(row) for row in cursor.fetchall()]
 
-        cursor.execute(SqlLoader.get_sql("HOME_USER_GROWTH_TREND"))
-        user_growth = [_user_growth_payload(row) for row in cursor.fetchall()]
-        cursor.execute(SqlLoader.get_sql("HOME_SESSION_ACTIVITY_TREND"))
-        session_activity = [_session_activity_payload(row) for row in cursor.fetchall()]
-        cursor.execute(SqlLoader.get_sql("HOME_NOTICE_TYPE_DISTRIBUTION"))
-        notice_types = [_notice_type_payload(row) for row in cursor.fetchall()]
+        cursor.execute(
+            SqlLoader.get_sql("HOME_EXECUTIVE_PROJECT_SUMMARY"),
+            {"planYear": plan_year},
+        )
+        project_row = cursor.fetchone() or (0, 0, 0, 0, 0)
+        cursor.execute(
+            SqlLoader.get_sql("HOME_EXECUTIVE_DECISION_PROJECTS"),
+            {"planYear": plan_year},
+        )
+        decision_projects = [
+            {
+                "projectId": int(row[0]),
+                "projectName": row[1],
+                "customerName": row[2] or "",
+                "statusCode": row[3] or "PLANNED",
+                "orderAmountVat": str(row[4] or 0),
+                "contractAmountVat": str(row[5] or 0),
+                "projectStartDate": row[6],
+                "projectEndDate": row[7],
+            }
+            for row in cursor.fetchall()
+        ]
 
-        ai_table_available = True
-        ai_summary_row = (0, 0, 0, 0, None)
-        ai_training_trend: list[dict[str, Any]] = []
+        schema_warnings = []
+        company_schema_available = True
+        workforce = {
+            "internalCount": int(count_row[1] or 0),
+            "partnerCount": 0,
+            "freelancerCount": 0,
+        }
         try:
-            cursor.execute(SqlLoader.get_sql("HOME_AI_TRAINING_SUMMARY"))
-            ai_summary_row = cursor.fetchone() or ai_summary_row
-            cursor.execute(SqlLoader.get_sql("HOME_AI_TRAINING_TREND"), {"limit": 10})
-            ai_training_trend = [_ai_training_payload(row) for row in cursor.fetchall()]
+            cursor.execute(
+                SqlLoader.get_sql("HOME_EXECUTIVE_WORKFORCE_SUMMARY"),
+                {"planYear": plan_year},
+            )
+            workforce_row = cursor.fetchone() or (count_row[1], 0, 0)
+            workforce = {
+                "internalCount": int(workforce_row[0] or 0),
+                "partnerCount": int(workforce_row[1] or 0),
+                "freelancerCount": int(workforce_row[2] or 0),
+            }
         except Exception as exc:
-            if _oracle_error_code(exc) != 942:
+            if _oracle_error_code(exc) not in {904, 942}:
                 raise
-            ai_table_available = False
-            logger.warning(
-                "AI training dashboard table is not installed; "
-                "run database/INIT_SYSTEM_ALT.sql."
+            company_schema_available = False
+            schema_warnings.append(
+                "협력업체·외부인력 스키마가 아직 설치되지 않았습니다."
+            )
+
+        planning_schema_available = True
+        scenario = None
+        try:
+            cursor.execute(
+                SqlLoader.get_sql("HOME_EXECUTIVE_LATEST_SCENARIO"),
+                {"planYear": plan_year},
+            )
+            scenario_row = cursor.fetchone()
+            if scenario_row:
+                scenario = _executive_scenario_payload(
+                    load_scenario_detail(cursor, int(scenario_row[0]))
+                )
+        except Exception as exc:
+            if _oracle_error_code(exc) not in {904, 942}:
+                raise
+            planning_schema_available = False
+            schema_warnings.append(
+                "연간 사업·인력계획 스키마가 아직 설치되지 않았습니다."
             )
 
         return {
@@ -149,28 +234,40 @@ def dashboard(request: Request):
             "data": {
                 "appName": os.getenv("APP_NAME", "INIT Members"),
                 "user": user,
-                "userCount": int(count_row[0] or 0),
-                "activeUserCount": int(count_row[1] or 0),
+                "planYear": plan_year,
+                "generatedAt": datetime.now().isoformat(),
                 "noticeCount": int(count_row[2] or 0),
-                "userGrowth": user_growth,
-                "sessionActivity": session_activity,
-                "noticeTypes": notice_types,
-                "aiTraining": {
-                    "tableAvailable": ai_table_available,
-                    "totalCount": int(ai_summary_row[0] or 0),
-                    "completedCount": int(ai_summary_row[1] or 0),
-                    "activeCount": int(ai_summary_row[2] or 0),
-                    "failedCount": int(ai_summary_row[3] or 0),
-                    "averageAccuracy": (
-                        float(ai_summary_row[4])
-                        if ai_summary_row[4] is not None
-                        else None
-                    ),
-                    "trend": ai_training_trend,
+                "projectSummary": {
+                    "projectCount": int(project_row[0] or 0),
+                    "bidTargetCount": int(project_row[1] or 0),
+                    "awardedCount": int(project_row[2] or 0),
+                    "orderAmountVat": str(project_row[3] or 0),
+                    "contractAmountVat": str(project_row[4] or 0),
                 },
+                "workforce": workforce,
+                "companySchemaAvailable": company_schema_available,
+                "planningSchemaAvailable": planning_schema_available,
+                "scenario": scenario,
+                "decisionProjects": decision_projects,
+                "schemaWarnings": schema_warnings,
                 "notices": notices,
             },
         }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Executive dashboard query failed. plan_year=%s", plan_year)
+        oracle_code = _oracle_error_code(exc)
+        if oracle_code in {904, 942}:
+            detail = "시스템 DB 기본 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요."
+        elif isinstance(exc, oracledb.Error):
+            detail = "시스템 DB에 연결하지 못했습니다. DB 접속 상태와 연결 풀을 확인해 주세요."
+        else:
+            detail = "경영 현황을 불러오지 못했습니다."
+        raise HTTPException(
+            status_code=503 if oracle_code in {904, 942} or isinstance(exc, oracledb.Error) else 500,
+            detail=detail,
+        ) from exc
     finally:
         if cursor:
             cursor.close()
@@ -201,6 +298,21 @@ def download_notice_file(file_id: int):
                 "X-Content-Type-Options": "nosniff",
             },
         )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Notice attachment download failed. file_id=%s", file_id)
+        oracle_code = _oracle_error_code(exc)
+        if oracle_code in {904, 942}:
+            detail = "공지 첨부파일 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요."
+        elif isinstance(exc, oracledb.Error):
+            detail = "시스템 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+        else:
+            detail = "공지 첨부파일을 내려받지 못했습니다."
+        raise HTTPException(
+            status_code=503 if oracle_code in {904, 942} or isinstance(exc, oracledb.Error) else 500,
+            detail=detail,
+        ) from exc
     finally:
         if cursor:
             cursor.close()

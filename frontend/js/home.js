@@ -1,16 +1,9 @@
 (function() {
     "use strict";
 
-    const SVG_NS = "http://www.w3.org/2000/svg";
-    const NOTICE_TYPE_LABELS = {
-        INFO: "안내",
-        IMPORTANT: "중요",
-        WARNING: "주의",
-        MAINTENANCE: "점검"
-    };
-
     let controller = null;
     let root = null;
+    let dashboardRequestId = 0;
 
     function query(selector) {
         return root?.querySelector(selector) || null;
@@ -20,25 +13,9 @@
         return Common.data.pick(source, ...keys);
     }
 
-    function number(source, ...keys) {
-        const value = Number(pick(source, ...keys) || 0);
-        return Number.isFinite(value) ? value : 0;
-    }
-
     function formattedNumber(value) {
         const numeric = Number(value || 0);
         return Number.isFinite(numeric) ? numeric.toLocaleString("ko-KR") : "0";
-    }
-
-    function formattedPercent(value, fractionDigits = 1) {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(fractionDigits)}%` : "-";
-    }
-
-    function svgElement(tagName, attributes = {}) {
-        const node = document.createElementNS(SVG_NS, tagName);
-        Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, String(value)));
-        return node;
     }
 
     function noticeValue(notice, ...keys) {
@@ -111,288 +88,291 @@
         });
     }
 
-    function renderAiTrend(aiTraining = {}) {
-        const trend = Array.isArray(aiTraining.trend) ? aiTraining.trend : [];
-        const isEmpty = trend.length === 0;
-        const badge = query("#aiTrendMode");
-        const chart = query("#aiTrendChart");
-        const emptyState = query("#aiTrendEmpty");
-        badge.textContent = isEmpty ? "실데이터 대기" : `실데이터 ${trend.length}회`;
-        badge.classList.toggle("is-empty", isEmpty);
-        chart.hidden = isEmpty;
-        emptyState.hidden = !isEmpty;
+    function integerAmount(value) {
+        const text = String(value ?? "0").trim();
+        try {
+            return BigInt(/^-?\d+$/.test(text) ? text : String(Math.round(Number(text) || 0)));
+        } catch (_error) {
+            return 0n;
+        }
+    }
 
-        const dataGroup = query("#aiTrendChartData");
-        const labels = query("#aiTrendLabels");
-        Common.dom.clear(dataGroup);
-        Common.dom.clear(labels);
+    function money(value) {
+        return `${integerAmount(value).toLocaleString("ko-KR")}원`;
+    }
 
-        if (isEmpty) {
-            query("#aiLatestAccuracy").textContent = "연동 대기";
-            query("#aiAverageAccuracy").textContent = "-";
-            query("#aiDatasetRows").textContent = "-";
+    function profitRate(profit, sales) {
+        const denominator = integerAmount(sales);
+        if (denominator === 0n) return 0;
+        return Number(integerAmount(profit) * 10000n / denominator) / 100;
+    }
+
+    function emptyState(text, tagName = "div") {
+        return Common.dom.element(tagName, {
+            className: "empty-state dashboard-empty-state",
+            text
+        });
+    }
+
+    function monthlyPlan(scenario, planYear) {
+        const rows = new Map(
+            Array.from({ length: 12 }, (_, index) => [
+                `${planYear}-${String(index + 1).padStart(2, "0")}`,
+                { sales: 0n, cost: 0n, profit: 0n }
+            ])
+        );
+        if (Array.isArray(scenario?.monthlyFinancials)) {
+            scenario.monthlyFinancials.forEach((allocation) => {
+                const target = rows.get(String(allocation.month || "").slice(0, 7));
+                if (!target) return;
+                target.sales += integerAmount(allocation.salesAmount);
+                target.cost += integerAmount(allocation.costAmount);
+                target.profit += integerAmount(allocation.operatingProfit);
+            });
+            return rows;
+        }
+        (scenario?.projects || []).forEach((project) => {
+            (project.assignments || []).forEach((assignment) => {
+                (assignment.monthlyAllocations || []).forEach((allocation) => {
+                    const target = rows.get(allocation.month);
+                    if (!target) return;
+                    target.sales += integerAmount(allocation.salesAmount);
+                    target.cost += integerAmount(allocation.costAmount);
+                    target.profit += integerAmount(allocation.operatingProfit);
+                });
+            });
+        });
+        return rows;
+    }
+
+    function renderMonthlyPlan(scenario, planYear) {
+        const chart = query("#homeMonthlyPlan");
+        Common.dom.clear(chart);
+        if (!scenario) {
+            chart.appendChild(emptyState(`${planYear}년 계획안을 만들면 월별 예상 손익이 표시됩니다.`));
             return;
         }
-
-        const left = 18;
-        const right = 702;
-        const top = 24;
-        const bottom = 216;
-        const chartWidth = right - left;
-        const chartHeight = bottom - top;
-        const points = trend.map((item, index) => {
-            const accuracy = Math.min(1, Math.max(0.5, Number(item.accuracyScore || 0.5)));
-            return {
-                x: trend.length === 1 ? (left + right) / 2 : left + (chartWidth * index) / (trend.length - 1),
-                y: bottom - ((accuracy - 0.5) / 0.5) * chartHeight,
-                accuracy,
-                item
-            };
-        });
-
-        const linePath = points.map((point, index) => (
-            `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
-        )).join(" ");
-        const areaPath = `${linePath} L ${points.at(-1).x.toFixed(2)} ${bottom} L ${points[0].x.toFixed(2)} ${bottom} Z`;
-        dataGroup.append(
-            svgElement("path", { class: "ai-chart-area", d: areaPath }),
-            svgElement("path", { class: "ai-chart-line", d: linePath })
-        );
-
-        points.forEach((point, index) => {
-            const circle = svgElement("circle", {
-                class: "ai-chart-point",
-                cx: point.x,
-                cy: point.y,
-                r: 5
+        const rows = monthlyPlan(scenario, planYear);
+        const maxValue = [...rows.values()].reduce((maximum, item) => {
+            const values = [item.sales, item.cost, item.profit < 0n ? -item.profit : item.profit];
+            return values.reduce((result, value) => value > result ? value : result, maximum);
+        }, 0n);
+        rows.forEach((item, month) => {
+            const column = Common.dom.element("div", { className: "executive-month-column" });
+            const bars = Common.dom.element("div", {
+                className: "executive-month-bars",
+                attrs: {
+                    role: "img",
+                    "aria-label": `${month}, 매출 ${money(item.sales)}, 원가 ${money(item.cost)}, 이익 ${money(item.profit)}`
+                }
             });
-            const title = svgElement("title");
-            title.textContent = `${point.item.modelName || "AI 모델"} ${point.item.modelVersion || index + 1}: ${formattedPercent(point.accuracy)}`;
-            circle.appendChild(title);
-            dataGroup.appendChild(circle);
-            labels.appendChild(Common.dom.element("span", {
-                text: point.item.modelVersion || `RUN ${index + 1}`
-            }));
-        });
-
-        const latest = trend.at(-1);
-        chart.setAttribute(
-            "aria-label",
-            `AI 학습 정확도 ${trend.length}회 추이, 최근 정확도 ${formattedPercent(latest.accuracyScore)}`
-        );
-        query("#aiLatestAccuracy").textContent = formattedPercent(latest.accuracyScore);
-        query("#aiAverageAccuracy").textContent = formattedPercent(aiTraining.averageAccuracy);
-        query("#aiDatasetRows").textContent = formattedNumber(latest.datasetRowCount);
-    }
-
-    function renderAiOperations(aiTraining = {}) {
-        const total = number(aiTraining, "totalCount");
-        const completed = number(aiTraining, "completedCount");
-        const active = number(aiTraining, "activeCount");
-        const failed = number(aiTraining, "failedCount");
-        const completedAngle = total ? (completed / total) * 360 : 0;
-        const activeAngle = total ? completedAngle + (active / total) * 360 : 0;
-        const donut = query("#aiStatusDonut");
-        const statusList = query("#aiStatusList");
-        const emptyState = query("#aiOperationEmpty");
-        const operationVisual = query("#aiOperationVisual");
-
-        query("#aiTotalRuns").textContent = formattedNumber(total);
-        query("#aiCompletedRuns").textContent = formattedNumber(completed);
-        query("#aiActiveRuns").textContent = formattedNumber(active);
-        query("#aiFailedRuns").textContent = formattedNumber(failed);
-        donut.style.setProperty("--donut-completed", `${completedAngle}deg`);
-        donut.style.setProperty("--donut-active", `${activeAngle}deg`);
-        donut.classList.toggle("is-empty", total === 0);
-        donut.hidden = total === 0;
-        statusList.hidden = total === 0;
-        emptyState.hidden = total > 0;
-        operationVisual.classList.toggle("is-empty-state", total === 0);
-        donut.setAttribute(
-            "aria-label",
-            `AI 학습 전체 ${total}회, 완료 ${completed}회, 진행 ${active}회, 실패 ${failed}회`
-        );
-
-        const tableAvailable = aiTraining.tableAvailable !== false;
-        const integration = query("#aiIntegrationStatus");
-        if (!tableAvailable) {
-            query("#aiOperationEmptyTitle").textContent = "학습 데이터 연결 필요";
-            query("#aiOperationEmptyDescription").textContent = "증분 DDL 적용 후 학습 파이프라인 실행 이력을 연결할 수 있습니다.";
-            integration.className = "dashboard-integration-note is-warning";
-            integration.textContent = "AI 학습 테이블 설치가 필요합니다. INIT_SYSTEM_ALT.sql을 적용해 주세요.";
-        } else if (!total) {
-            query("#aiOperationEmptyTitle").textContent = "첫 학습 실행 대기";
-            query("#aiOperationEmptyDescription").textContent = "학습 파이프라인이 실행되면 완료·진행·실패 상태를 집계합니다.";
-            integration.className = "dashboard-integration-note";
-            integration.textContent = "연동 준비 완료 · 학습 파이프라인의 실행 이력을 기다리고 있습니다.";
-        } else {
-            integration.className = "dashboard-integration-note is-connected";
-            integration.textContent = "AI 학습 파이프라인이 정상적으로 연결되어 있습니다.";
-        }
-    }
-
-    function renderUserGrowth(rows) {
-        const chart = query("#userGrowthChart");
-        Common.dom.clear(chart);
-        const data = Array.isArray(rows) ? rows : [];
-        const maxCount = Math.max(1, ...data.map((item) => Number(item.userCount || 0)));
-        data.forEach((item) => {
-            const count = Number(item.userCount || 0);
-            const column = Common.dom.element("div", { className: "bar-chart-column" });
-            const barArea = Common.dom.element("span", { className: "bar-chart-track" });
-            const bar = Common.dom.element("i", { className: "bar-chart-bar" });
-            bar.style.setProperty("--bar-height", `${Math.max(count ? 12 : 3, (count / maxCount) * 100)}%`);
-            barArea.appendChild(bar);
-            column.append(
-                Common.dom.element("strong", { text: formattedNumber(count) }),
-                barArea,
-                Common.dom.element("span", { text: item.monthLabel || item.monthKey || "-" })
-            );
+            [
+                ["sales", item.sales],
+                ["cost", item.cost],
+                ["profit", item.profit]
+            ].forEach(([type, rawValue]) => {
+                const absolute = rawValue < 0n ? -rawValue : rawValue;
+                const height = maxValue ? Number(absolute * 100n / maxValue) : 0;
+                const bar = Common.dom.element("i", {
+                    className: `executive-month-bar is-${type}${rawValue < 0n ? " is-negative" : ""}`,
+                    attrs: { title: money(rawValue) }
+                });
+                bar.style.setProperty("--executive-bar-height", `${Math.max(rawValue ? 4 : 0, height)}%`);
+                bars.appendChild(bar);
+            });
+            column.append(bars, Common.dom.element("span", { text: `${Number(month.slice(5))}월` }));
             chart.appendChild(column);
         });
     }
 
-    function renderNoticeDistribution(rows) {
-        const chart = query("#noticeTypeDistribution");
-        Common.dom.clear(chart);
-        const data = Array.isArray(rows) ? rows : [];
-        if (!data.length) {
-            chart.appendChild(Common.dom.element("div", {
-                className: "dashboard-empty-state compact",
-                text: "게시 콘텐츠가 없습니다."
-            }));
+    function renderRisks(scenario) {
+        const list = query("#homeRiskList");
+        Common.dom.clear(list);
+        const warnings = Array.isArray(scenario?.warnings) ? scenario.warnings : [];
+        query("#homeRiskCount").textContent = `${formattedNumber(warnings.length)}건`;
+        if (!scenario) {
+            list.appendChild(emptyState("선택 연도의 계획안이 없습니다.", "li"));
             return;
         }
-        const maxCount = Math.max(1, ...data.map((item) => Number(item.noticeCount || 0)));
-        data.forEach((item) => {
-            const count = Number(item.noticeCount || 0);
-            const row = Common.dom.element("div", { className: "distribution-row" });
-            const heading = Common.dom.element("div", { className: "distribution-heading" });
-            heading.append(
-                Common.dom.element("span", {
-                    text: NOTICE_TYPE_LABELS[item.noticeType] || item.noticeType || "기타"
+        if (!warnings.length) {
+            list.appendChild(emptyState("현재 과부하 또는 목표인원 부족 경고가 없습니다.", "li"));
+            return;
+        }
+        warnings.slice(0, 8).forEach((warning) => {
+            const item = Common.dom.element("li", {
+                className: `executive-risk-item is-${warning.type === "OVER_CAPACITY" ? "capacity" : "staffing"}`
+            });
+            item.append(
+                Common.dom.element("strong", {
+                    text: warning.type === "OVER_CAPACITY" ? "월 투입 과부하" : "목표인원 부족"
                 }),
-                Common.dom.element("strong", { text: formattedNumber(count) })
+                Common.dom.element("span", { text: warning.message || "계획 조건을 확인해 주세요." })
             );
-            const track = Common.dom.element("span", { className: "distribution-track" });
-            const bar = Common.dom.element("i", { className: "distribution-bar" });
-            bar.style.setProperty("--distribution-width", `${(count / maxCount) * 100}%`);
-            track.appendChild(bar);
-            row.append(heading, track);
-            chart.appendChild(row);
+            list.appendChild(item);
         });
     }
 
-    function appendInsight(list, tone, symbol, title, description) {
-        const item = Common.dom.element("li", { className: `insight-item is-${tone}` });
-        item.append(
-            Common.dom.element("span", { className: "insight-icon", text: symbol }),
-            Common.dom.element("span", {}, [
-                Common.dom.element("strong", { text: title }),
-                Common.dom.element("small", { text: description })
-            ])
-        );
-        list.appendChild(item);
+    function renderDecisions(projects) {
+        const list = query("#homeDecisionList");
+        Common.dom.clear(list);
+        const rows = Array.isArray(projects) ? projects : [];
+        query("#homeDecisionCount").textContent = `${formattedNumber(rows.length)}건`;
+        if (!rows.length) {
+            list.appendChild(emptyState("입찰 판단이 필요한 사업이 없습니다."));
+            return;
+        }
+        rows.forEach((project) => {
+            const item = Common.dom.element("article", { className: "executive-decision-item" });
+            const heading = Common.dom.element("div");
+            heading.append(
+                Common.dom.element("span", {
+                    className: `executive-project-status is-${String(project.statusCode || "planned").toLowerCase()}`,
+                    text: project.statusCode === "BIDDING" ? "입찰 중" : "검토"
+                }),
+                Common.dom.element("strong", { text: project.projectName || "사업명 미정" })
+            );
+            item.append(
+                heading,
+                Common.dom.element("span", { text: project.customerName || "발주처 미정" }),
+                Common.dom.element("b", { text: money(project.orderAmountVat) })
+            );
+            list.appendChild(item);
+        });
     }
 
-    function renderInsights(data) {
-        const list = query("#homeInsightList");
-        Common.dom.clear(list);
-        const totalUsers = number(data, "userCount");
-        const activeUsers = number(data, "activeUserCount");
-        const activeRate = totalUsers ? activeUsers / totalUsers : 0;
-        const growth = Array.isArray(data.userGrowth) ? data.userGrowth : [];
-        const currentGrowth = Number(growth.at(-1)?.userCount || 0);
-        const previousGrowth = Number(growth.at(-2)?.userCount || 0);
-        const activity = Array.isArray(data.sessionActivity) ? data.sessionActivity : [];
-        const latestActivity = Number(activity.at(-1)?.activeUserCount || 0);
-        const ai = data.aiTraining || {};
+    function renderWorkforce(workforce, available) {
+        const container = query("#homeWorkforceComposition");
+        Common.dom.clear(container);
+        const rows = [
+            ["내부 임직원", Number(workforce?.internalCount || 0), "internal"],
+            ["협력업체 인력", Number(workforce?.partnerCount || 0), "partner"],
+            ["계약·프리랜스", Number(workforce?.freelancerCount || 0), "freelancer"]
+        ];
+        const total = rows.reduce((sum, item) => sum + item[1], 0);
+        query("#homeWorkforceTotal").textContent = `${formattedNumber(total)}명`;
+        rows.forEach(([label, count, type]) => {
+            const row = Common.dom.element("div", { className: "executive-workforce-row" });
+            const heading = Common.dom.element("div");
+            heading.append(
+                Common.dom.element("span", { text: label }),
+                Common.dom.element("strong", { text: `${formattedNumber(count)}명` })
+            );
+            const track = Common.dom.element("span", { className: "executive-workforce-track" });
+            const bar = Common.dom.element("i", { className: `is-${type}` });
+            bar.style.setProperty("--workforce-width", `${total ? count / total * 100 : 0}%`);
+            track.appendChild(bar);
+            row.append(heading, track);
+            container.appendChild(row);
+        });
+        if (!available) {
+            container.appendChild(Common.dom.element("p", {
+                className: "executive-inline-warning",
+                text: "협력업체·외부인력 스키마 적용 후 전체 인력 구성을 확인할 수 있습니다."
+            }));
+        }
+    }
 
-        appendInsight(
-            list,
-            activeRate >= 0.7 ? "positive" : "neutral",
-            "◎",
-            `사용자 활성률 ${formattedPercent(activeRate)}`,
-            `${formattedNumber(activeUsers)}명의 사용자가 현재 활성 상태입니다.`
-        );
-        appendInsight(
-            list,
-            currentGrowth >= previousGrowth ? "positive" : "neutral",
-            currentGrowth >= previousGrowth ? "↗" : "→",
-            `이번 달 신규 사용자 ${formattedNumber(currentGrowth)}명`,
-            `직전 달 대비 ${formattedNumber(Math.abs(currentGrowth - previousGrowth))}명 ${
-                currentGrowth >= previousGrowth ? "증가 또는 유지" : "감소"
-            }했습니다.`
-        );
-        appendInsight(
-            list,
-            latestActivity > 0 ? "positive" : "neutral",
-            "⌁",
-            `오늘 세션 활동 ${formattedNumber(latestActivity)}명`,
-            "최근 7일 서버 세션의 실제 활동 기록을 기준으로 집계했습니다."
-        );
-        appendInsight(
-            list,
-            number(ai, "failedCount") > 0 ? "warning" : "ai",
-            "AI",
-            ai.tableAvailable === false
-                ? "AI 학습 데이터 연동 필요"
-                : `AI 학습 완료 ${formattedNumber(number(ai, "completedCount"))}회`,
-            ai.tableAvailable === false
-                ? "증분 DDL 적용 후 학습 파이프라인 실행 이력을 연결할 수 있습니다."
-                : (number(ai, "totalCount")
-                    ? `평균 정확도 ${formattedPercent(ai.averageAccuracy)}를 기록하고 있습니다.`
-                    : "테이블 연동은 완료되었으며 첫 학습 실행을 기다리고 있습니다.")
-        );
+    function renderSchemaWarnings(warnings) {
+        const container = query("#homeSchemaWarnings");
+        Common.dom.clear(container);
+        const rows = Array.isArray(warnings) ? warnings : [];
+        container.hidden = !rows.length;
+        rows.forEach((warning) => {
+            container.appendChild(Common.dom.element("p", {
+                text: `${warning} database/INIT_SYSTEM_ALT.sql 적용이 필요합니다.`
+            }));
+        });
     }
 
     function renderDashboard(data) {
-        const userCount = number(data, "userCount");
-        const activeUserCount = number(data, "activeUserCount");
-        const activeRate = userCount ? activeUserCount / userCount : 0;
-        const aiTraining = data.aiTraining || {};
+        const projectSummary = data.projectSummary || {};
+        const scenario = data.scenario || null;
+        const scenarioSummary = scenario?.summary || {};
+        const projects = scenario?.projects || [];
+        const weightedAward = projects.reduce((sum, project) => {
+            if (String(project.bidDecisionCode || "").toUpperCase() === "SKIP") return sum;
+            const probability = BigInt(Math.round(Number(project.winProbability || 0) * 100));
+            return sum + (integerAmount(project.expectedContractAmount) * probability + 5000n) / 10000n;
+        }, 0n);
+        const shortageCount = (scenario?.warnings || [])
+            .filter((warning) => warning.type === "UNDERSTAFFED")
+            .reduce((sum, warning) => sum + Number(warning.shortageHeadcount || 0), 0);
+        const sales = scenario ? scenarioSummary.totalSalesAmount : projectSummary.contractAmountVat;
+        const profit = scenario ? scenarioSummary.operatingProfit : 0;
+        const workforce = data.workforce || {};
+        const availableWorkforce = Number(workforce.internalCount || 0)
+            + Number(workforce.partnerCount || 0)
+            + Number(workforce.freelancerCount || 0);
 
-        query("#homeUserCount").textContent = formattedNumber(userCount);
-        query("#homeUserDetail").textContent = `최근 6개월 신규 ${formattedNumber(
-            (data.userGrowth || []).reduce((sum, item) => sum + Number(item.userCount || 0), 0)
-        )}명`;
-        query("#homeActiveRate").textContent = formattedPercent(activeRate);
-        query("#homeActiveUserDetail").textContent = `${formattedNumber(activeUserCount)}명 활성 / 전체 ${formattedNumber(userCount)}명`;
-        query("#homeAiCompletedCount").textContent = formattedNumber(number(aiTraining, "completedCount"));
-        query("#homeAiDetail").textContent = number(aiTraining, "totalCount")
-            ? `진행 ${formattedNumber(number(aiTraining, "activeCount"))} · 실패 ${formattedNumber(number(aiTraining, "failedCount"))}`
-            : "최근 30일 학습 이력 없음";
-        query("#homeNoticeCount").textContent = formattedNumber(number(data, "noticeCount"));
+        query("#homeBidTargetCount").textContent = formattedNumber(projectSummary.bidTargetCount || 0);
+        query("#homeProjectCountDetail").textContent = `등록 사업 ${formattedNumber(projectSummary.projectCount || 0)}건 · 수주 ${formattedNumber(projectSummary.awardedCount || 0)}건`;
+        query("#homeWeightedAward").textContent = money(scenario ? weightedAward : projectSummary.contractAmountVat);
+        query("#homeAwardDetail").textContent = scenario ? "수주 확률을 반영한 계획값" : "계획안 없음 · 현재 수주액";
+        query("#homePlannedSales").textContent = money(sales);
+        query("#homeSalesDetail").textContent = scenario ? "월별 인력 매출단가 합계" : "현재 프로젝트 수주액";
+        query("#homeOperatingProfit").textContent = money(profit);
+        query("#homeProfitRate").textContent = `이익률 ${profitRate(profit, sales).toFixed(1)}%`;
+        query("#homeAssignmentCount").textContent = formattedNumber(scenarioSummary.assignmentCount || 0);
+        query("#homeShortageCount").textContent = formattedNumber(shortageCount);
+        query("#homeWorkforceDetail").textContent = `가용 등록인력 ${formattedNumber(availableWorkforce)}명`;
+        query("#homeScenarioBadge").textContent = scenario
+            ? `${scenario.scenarioName} · ${scenario.statusCode === "DRAFT" ? "임시안" : "확정안"}`
+            : `${data.planYear}년 계획안 없음`;
+        query("#homeScenarioBadge").classList.toggle("is-empty", !scenario);
         query("#homeUpdatedAt").textContent = `${new Intl.DateTimeFormat("ko-KR", {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit"
-        }).format(new Date())} 기준`;
+        }).format(new Date(data.generatedAt || Date.now()))} 기준`;
 
-        renderAiTrend(aiTraining);
-        renderAiOperations(aiTraining);
-        renderUserGrowth(data.userGrowth);
-        renderNoticeDistribution(data.noticeTypes);
-        renderInsights(data);
+        renderMonthlyPlan(scenario, Number(data.planYear));
+        renderRisks(scenario);
+        renderDecisions(data.decisionProjects);
+        renderWorkforce(workforce, data.companySchemaAvailable !== false);
+        renderSchemaWarnings(data.schemaWarnings);
         renderNotices(data.notices);
+        query("#homeOpenPlanningButton").disabled = data.planningSchemaAvailable === false;
     }
 
     async function loadDashboard() {
+        const requestId = ++dashboardRequestId;
         const status = query("#homeStatus");
-        Common.ui.setInlineStatus(status, "데이터 인사이트를 불러오고 있습니다.");
+        const planYear = Number(query("#homeYearSelect").value);
+        Common.ui.setInlineStatus(status, `${planYear}년 경영 현황을 불러오고 있습니다.`);
         try {
-            const payload = await Common.api.request("/home/dashboard", {
+            const payload = await Common.api.request(`/home/dashboard?planYear=${encodeURIComponent(planYear)}`, {
                 method: "GET",
                 signal: controller.signal,
                 showLoading: false
             });
+            if (requestId !== dashboardRequestId) return;
             renderDashboard(Common.data.get(payload) || {});
             Common.ui.setInlineStatus(status, "");
         } catch (error) {
-            if (error?.name === "AbortError") return;
-            renderNotices([]);
-            Common.ui.setInlineStatus(status, error.message || "대시보드를 불러오지 못했습니다.", "error");
+            if (error?.name === "AbortError" || requestId !== dashboardRequestId) return;
+            renderDashboard({
+                planYear,
+                generatedAt: Date.now(),
+                projectSummary: {},
+                workforce: {},
+                decisionProjects: [],
+                schemaWarnings: [],
+                notices: []
+            });
+            Common.ui.setInlineStatus(status, error.message || "경영 현황을 불러오지 못했습니다.", "error");
         }
+    }
+
+    function initializeYears() {
+        const select = query("#homeYearSelect");
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear - 1; year <= currentYear + 4; year += 1) {
+            const option = document.createElement("option");
+            option.value = String(year);
+            option.textContent = `${year}년`;
+            select.appendChild(option);
+        }
+        select.value = String(currentYear + 1);
     }
 
     window.Pages.home = {
@@ -400,14 +380,22 @@
             root = context.root;
             controller = new AbortController();
             const user = App.getUser();
-            query("#homeGreeting").textContent = `${user?.userName || user?.loginId || "사용자"}님, 오늘의 AI 학습과 서비스 통계 현황입니다.`;
-            query("#homeRefreshButton")?.addEventListener("click", loadDashboard, {
-                signal: controller.signal
-            });
+            query("#homeGreeting").textContent = `${user?.userName || user?.loginId || "사용자"}님, 사업 파이프라인과 인력계획의 주요 변화를 확인하세요.`;
+            initializeYears();
+            query("#homeYearSelect").addEventListener("change", loadDashboard, { signal: controller.signal });
+            query("#homeRefreshButton").addEventListener("click", loadDashboard, { signal: controller.signal });
+            query("#homeOpenPlanningButton").addEventListener("click", () => App.navigate("workforce-planning", {
+                context: { planYear: Number(query("#homeYearSelect").value) }
+            }), { signal: controller.signal });
             await loadDashboard();
         },
 
+        activate() {
+            return loadDashboard();
+        },
+
         destroy() {
+            dashboardRequestId += 1;
             controller?.abort();
             controller = null;
             root = null;

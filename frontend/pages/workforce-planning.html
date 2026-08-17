@@ -1,0 +1,199 @@
+<section class="page planning-page" id="page-workforce-planning" aria-labelledby="planningTitle">
+    <header class="page-header planning-page-header">
+        <div>
+            <p class="page-kicker">ANNUAL BUSINESS &amp; WORKFORCE PLAN</p>
+            <h2 id="planningTitle">연간 사업·인력계획</h2>
+            <p>사업 후보와 보유인력을 배치해 예상 매출·원가·영업이익과 월별 과부하를 시뮬레이션합니다.</p>
+        </div>
+        <div class="planning-save-state" aria-live="polite">
+            <span id="planningDirtyBadge" class="planning-dirty-badge" hidden>저장되지 않은 변경</span>
+            <span id="planningRevisionLabel">계획안을 선택해 주세요.</span>
+        </div>
+    </header>
+
+    <section class="planning-toolbar" aria-label="계획안 도구">
+        <label class="field planning-year-field">
+            <span>계획연도</span>
+            <select id="planningYearSelect" class="select"></select>
+        </label>
+        <label class="field planning-scenario-field">
+            <span>계획안</span>
+            <select id="planningScenarioSelect" class="select">
+                <option value="">계획안 선택</option>
+            </select>
+        </label>
+        <div class="planning-toolbar-actions">
+            <button id="planningNewScenarioButton" class="button button-secondary" type="button">새 계획안</button>
+            <button id="planningDeleteScenarioButton" class="button button-danger" type="button" disabled>계획안 삭제</button>
+            <button id="planningSaveButton" class="button button-primary" type="button" disabled>임시 저장</button>
+            <button id="planningConfirmButton" class="button planning-confirm-button" type="button" disabled>최종 확정</button>
+        </div>
+        <p id="planningStatus" class="inline-status planning-toolbar-status" aria-live="polite"></p>
+    </section>
+
+    <section id="planningMetricStrip" class="planning-metric-strip" aria-label="계획 손익 요약">
+        <article><span>계획 프로젝트</span><strong id="planningProjectCount">0</strong><small>건</small></article>
+        <article><span>투입 인력</span><strong id="planningAssignmentCount">0</strong><small>명·건</small></article>
+        <article><span>총 투입량</span><strong id="planningTotalMm">0.00</strong><small>M/M</small></article>
+        <article><span>가중 예상수주</span><strong id="planningWeightedPipeline">0원</strong><small>확률 반영</small></article>
+        <article><span>예상 매출</span><strong id="planningTotalSales">0원</strong><small>인력 기준</small></article>
+        <article><span>예상 원가</span><strong id="planningTotalCost">0원</strong><small>인력 기준</small></article>
+        <article class="is-profit"><span>영업이익</span><strong id="planningOperatingProfit">0원</strong><small id="planningProfitRate">0%</small></article>
+        <article class="is-risk"><span>계획 위험</span><strong id="planningWarningCount">0</strong><small>과부하·부족</small></article>
+    </section>
+
+    <div id="planningWorkspace" class="planning-workspace" hidden>
+        <aside class="planning-palette" aria-label="사업 및 인력 후보">
+            <section class="planning-palette-section" aria-labelledby="planningProjectPoolTitle">
+                <div class="planning-section-heading">
+                    <div>
+                        <span class="planning-section-index">01</span>
+                        <h3 id="planningProjectPoolTitle">사업 후보</h3>
+                    </div>
+                    <span id="planningProjectPoolCount" class="count-badge">0</span>
+                </div>
+                <label class="field planning-search-field">
+                    <span class="sr-only">사업 검색</span>
+                    <input id="planningProjectSearch" class="input" type="search" placeholder="사업명·발주처 검색">
+                </label>
+                <div id="planningProjectPool" class="planning-card-pool" aria-live="polite"></div>
+            </section>
+
+            <section class="planning-palette-section planning-worker-section" aria-labelledby="planningWorkerPoolTitle">
+                <div class="planning-section-heading">
+                    <div>
+                        <span class="planning-section-index">02</span>
+                        <h3 id="planningWorkerPoolTitle">보유인력</h3>
+                    </div>
+                    <span id="planningWorkerPoolCount" class="count-badge">0</span>
+                </div>
+                <div class="planning-worker-filters">
+                    <label class="field planning-search-field">
+                        <span class="sr-only">인력 검색</span>
+                        <input id="planningWorkerSearch" class="input" type="search" placeholder="이름·소속·부서 검색">
+                    </label>
+                    <label class="field">
+                        <span class="sr-only">인력 유형</span>
+                        <select id="planningWorkerType" class="select">
+                            <option value="">전체 인력</option>
+                            <option value="INTERNAL">내부 임직원</option>
+                            <option value="PARTNER">협력업체</option>
+                            <option value="FREELANCER">계약·프리랜스</option>
+                        </select>
+                    </label>
+                </div>
+                <p id="planningWorkerSelection" class="planning-selection-hint" aria-live="polite">인력을 선택하거나 프로젝트로 끌어다 놓으세요.</p>
+                <div id="planningWorkerPool" class="planning-card-pool planning-worker-pool" aria-live="polite"></div>
+            </section>
+        </aside>
+
+        <section class="planning-canvas" aria-labelledby="planningCanvasTitle">
+            <div class="planning-canvas-header">
+                <div>
+                    <span class="planning-section-index">03</span>
+                    <h3 id="planningCanvasTitle">계획 시뮬레이션 보드</h3>
+                    <p>사업 후보를 추가한 뒤 각 프로젝트에 인력을 배치하세요.</p>
+                </div>
+                <div class="planning-canvas-legend" aria-label="입찰 상태 범례">
+                    <span class="is-participate">입찰</span>
+                    <span class="is-review">검토</span>
+                    <span class="is-hold">보류</span>
+                    <span class="is-skip">미참여</span>
+                </div>
+            </div>
+            <div id="planningMonthHeader" class="planning-month-header" aria-hidden="true"></div>
+            <div id="planningEmptyState" class="planning-empty-state">
+                <strong>아직 계획 대상 사업이 없습니다.</strong>
+                <p>왼쪽 사업 카드를 이곳으로 끌어오거나 ‘계획에 추가’를 선택하세요.</p>
+            </div>
+            <div id="planningProjectLanes" class="planning-project-lanes" aria-live="polite"></div>
+        </section>
+
+        <aside class="planning-inspector" aria-labelledby="planningInspectorTitle">
+            <div class="planning-section-heading planning-inspector-heading">
+                <div>
+                    <span class="planning-section-index">04</span>
+                    <h3 id="planningInspectorTitle">상세 조정</h3>
+                </div>
+            </div>
+            <div id="planningInspectorEmpty" class="planning-inspector-empty">
+                <strong>조정할 항목을 선택하세요.</strong>
+                <p>프로젝트 또는 투입인력을 선택하면 기간·금액·월별 M/M을 편집할 수 있습니다.</p>
+            </div>
+
+            <form id="planningProjectForm" class="planning-inspector-form" hidden>
+                <input id="planningProjectKey" type="hidden">
+                <div class="planning-inspector-title-row">
+                    <div>
+                        <small>PROJECT ASSUMPTION</small>
+                        <h4 id="planningProjectFormTitle">프로젝트 조건</h4>
+                    </div>
+                    <button id="planningRemoveProjectButton" class="button button-danger button-small" type="button">제외</button>
+                </div>
+                <label class="field"><span>입찰 판단</span><select id="planningBidDecision" class="select"><option value="REVIEW">검토</option><option value="PARTICIPATE">입찰 참여</option><option value="HOLD">보류</option><option value="SKIP">미참여</option></select></label>
+                <label class="field"><span>수주 확률 (%)</span><input id="planningWinProbability" class="input" type="number" min="0" max="100" step="1"></label>
+                <label class="field"><span>목표 투입인원</span><input id="planningTargetHeadcount" class="input" type="number" min="0" max="10000" step="1"></label>
+                <div class="planning-form-two">
+                    <label class="field"><span>예상 시작일</span><input id="planningProjectStartDate" class="input" type="date" required></label>
+                    <label class="field"><span>예상 종료일</span><input id="planningProjectEndDate" class="input" type="date" required></label>
+                </div>
+                <label class="field"><span>공모가 (VAT 포함)</span><input id="planningAnnouncementAmount" class="input" type="number" min="0" step="1"></label>
+                <label class="field"><span>입찰가 (VAT 포함)</span><input id="planningBidAmount" class="input" type="number" min="0" step="1"></label>
+                <label class="field"><span>예상 수주가 (VAT 포함)</span><input id="planningExpectedContractAmount" class="input" type="number" min="0" step="1"></label>
+                <label class="field"><span>메모</span><textarea id="planningProjectNote" class="textarea" maxlength="2000"></textarea></label>
+                <button class="button button-primary" type="submit">프로젝트 조건 적용</button>
+            </form>
+
+            <form id="planningAssignmentForm" class="planning-inspector-form" hidden>
+                <input id="planningAssignmentKey" type="hidden">
+                <div class="planning-inspector-title-row">
+                    <div>
+                        <small>WORKFORCE ALLOCATION</small>
+                        <h4 id="planningAssignmentFormTitle">투입인력 조건</h4>
+                    </div>
+                    <button id="planningRemoveAssignmentButton" class="button button-danger button-small" type="button">배치 해제</button>
+                </div>
+                <p id="planningAssignmentCompany" class="planning-assignment-company"></p>
+                <div class="planning-form-two">
+                    <label class="field"><span>투입 시작일</span><input id="planningAssignmentStartDate" class="input" type="date" required></label>
+                    <label class="field"><span>투입 종료일</span><input id="planningAssignmentEndDate" class="input" type="date" required></label>
+                </div>
+                <label class="field"><span>월 원가단가</span><input id="planningCostUnitPrice" class="input" type="number" min="0" step="1"></label>
+                <label class="field"><span>월 매출단가</span><input id="planningSalesUnitPrice" class="input" type="number" min="0" step="1"></label>
+                <div class="planning-month-editor-heading">
+                    <div><strong>월별 M/M</strong><small>월별 0~1 범위</small></div>
+                    <button id="planningFillMonthsButton" class="button button-secondary button-small" type="button">기간 전체 1.0</button>
+                </div>
+                <div id="planningMonthEditor" class="planning-month-editor"></div>
+                <label class="field"><span>메모</span><textarea id="planningAssignmentNote" class="textarea" maxlength="2000"></textarea></label>
+                <button class="button button-primary" type="submit">투입 조건 적용</button>
+            </form>
+        </aside>
+    </div>
+
+    <section id="planningWarningsPanel" class="panel planning-warnings-panel" aria-labelledby="planningWarningsTitle" hidden>
+        <div class="panel-header">
+            <div><h3 id="planningWarningsTitle">계획 검증 경고</h3><p>같은 달에 1 M/M을 초과한 인력을 확인하세요.</p></div>
+        </div>
+        <ul id="planningWarningsList" class="planning-warning-list"></ul>
+    </section>
+
+    <dialog id="planningScenarioDialog" class="dialog planning-scenario-dialog" aria-labelledby="planningScenarioDialogTitle">
+        <form id="planningScenarioForm">
+            <header class="dialog-header">
+                <div><p class="page-kicker">NEW PLANNING SCENARIO</p><h2 id="planningScenarioDialogTitle">새 계획안 만들기</h2></div>
+                <button id="planningScenarioDialogClose" class="icon-button" type="button" aria-label="닫기">×</button>
+            </header>
+            <div class="dialog-body">
+                <label class="field"><span class="required">계획연도</span><input id="planningScenarioYear" class="input" type="number" min="1900" max="2100" readonly required></label>
+                <label class="field"><span class="required">계획안 이름</span><input id="planningScenarioName" class="input" maxlength="200" placeholder="예: 2027 기준 계획안" required></label>
+                <label class="field"><span>설명</span><textarea id="planningScenarioDescription" class="textarea" maxlength="2000" placeholder="전제조건과 검토 목적을 입력하세요."></textarea></label>
+                <p id="planningScenarioDialogStatus" class="inline-status" aria-live="polite"></p>
+            </div>
+            <footer class="dialog-footer">
+                <button id="planningScenarioCancelButton" class="button button-secondary" type="button">취소</button>
+                <button class="button button-primary" type="submit">계획안 생성</button>
+            </footer>
+        </form>
+    </dialog>
+</section>

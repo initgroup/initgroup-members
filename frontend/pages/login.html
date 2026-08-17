@@ -5,18 +5,18 @@
             <div class="login-intro-copy">
                 <div class="login-brand-row">
                     <img class="login-logo" src="./assets/init-logo.png" alt="INIT">
-                    <span class="login-brand-badge">EMPLOYEE PORTAL</span>
+                    <span class="login-brand-badge">EXECUTIVE PORTAL</span>
                 </div>
                 <p id="loginHeroEyebrow" class="login-hero-eyebrow">INIT MEMBERS ONLY</p>
                 <h1 id="loginTitle">
-                    <span class="login-title-line">함께 일하는 인아이티,</span>
-                    <span class="login-title-line">업무와 소식을 한곳에서</span>
+                    <span class="login-title-line">사업과 인력의 다음 해를,</span>
+                    <span class="login-title-line">한 화면에서 결정합니다</span>
                 </h1>
-                <p id="loginHeroDescription" class="login-hero-description">인아이티 직원이 필요한 사내 공지와 업무 정보를 한곳에서 안전하고 편리하게 확인합니다.</p>
-                <div class="login-capability-list" aria-label="직원전용 주요 서비스">
-                    <span>사내 공지</span>
-                    <span>업무 현황</span>
-                    <span>계정·권한 지원</span>
+                <p id="loginHeroDescription" class="login-hero-description">입찰 파이프라인, 프로젝트 손익과 차년도 인력계획을 안전하게 검토하는 인아이티 경영진 전용 업무공간입니다.</p>
+                <div class="login-capability-list" aria-label="경영진 주요 서비스">
+                    <span>입찰·수주</span>
+                    <span>손익 전망</span>
+                    <span>인력 계획</span>
                 </div>
             </div>
 
@@ -38,23 +38,23 @@
                     </svg>
                 </div>
                 <div class="login-data-visual-foot">
-                    <span><strong>NOTICE</strong> 사내 소식</span>
-                    <span><strong>WORK</strong> 업무 현황</span>
-                    <span><strong>SUPPORT</strong> 계정 지원</span>
+                    <span><strong>PIPELINE</strong> 입찰 현황</span>
+                    <span><strong>PROFIT</strong> 손익 전망</span>
+                    <span><strong>WORKFORCE</strong> 인력 계획</span>
                 </div>
             </div>
 
             <footer class="login-intro-footer">
                 <small id="loginAppName">INIT Members</small>
-                <span>Employee Workspace</span>
+                <span>Executive Workspace</span>
             </footer>
         </section>
 
         <section class="login-card" aria-labelledby="loginFormTitle">
             <header>
-                <p class="login-card-eyebrow">EMPLOYEE ONLY</p>
-                <h2 id="loginFormTitle">인아이티 직원전용 로그인</h2>
-                <p>인아이티 직원으로 승인된 계정만 안전하게 접속할 수 있습니다.</p>
+                <p class="login-card-eyebrow">EXECUTIVE ONLY</p>
+                <h2 id="loginFormTitle">인아이티 경영진 전용 로그인</h2>
+                <p>승인된 경영진 및 업무 관리자 계정만 접속할 수 있습니다.</p>
             </header>
 
             <form id="loginForm" class="login-form" autocomplete="off">
@@ -74,8 +74,8 @@
                 <button id="openSignupButton" class="login-support-link" type="button">
                     <span class="login-support-icon" aria-hidden="true">＋</span>
                     <span>
-                        <strong>직원 계정 신청</strong>
-                        <small>사내 서비스 이용 권한 요청</small>
+                        <strong>경영진 계정 신청</strong>
+                        <small>경영 시스템 이용 권한 요청</small>
                     </span>
                 </button>
                 <button id="openAdminContactButton" class="login-support-link" type="button">
@@ -87,7 +87,7 @@
                 </button>
             </div>
 
-            <p class="login-security-note"><span aria-hidden="true">●</span> 직원전용 시스템은 서버 세션으로 안전하게 보호됩니다.</p>
+            <p class="login-security-note"><span aria-hidden="true">●</span> 경영진 전용 시스템은 서버 세션으로 안전하게 보호됩니다.</p>
         </section>
     </div>
 
@@ -128,7 +128,7 @@
         <form id="signupForm">
             <header class="dialog-header">
                 <div>
-                    <h2 id="signupDialogTitle">직원 계정 신청</h2>
+                    <h2 id="signupDialogTitle">경영진 계정 신청</h2>
                     <p>신청한 계정은 관리자 승인 후 사용할 수 있습니다. 최초 관리자 가입에는 초기 관리자 키가 필요합니다.</p>
                 </div>
                 <button class="dialog-close" type="button" data-dialog-close aria-label="닫기">×</button>
@@ -158,8 +158,8 @@
                     <label class="field field-span">
                         <span class="required">가입 유형</span>
                         <select id="signupRoleCode" class="select">
-                            <option value="USER">일반 직원</option>
-                            <option value="ADMIN">관리자</option>
+                            <option value="USER">경영진 조회 계정</option>
+                            <option value="ADMIN">업무 관리자</option>
                         </select>
                     </label>
                     <label id="signupAdminKeyField" class="field field-span" hidden>

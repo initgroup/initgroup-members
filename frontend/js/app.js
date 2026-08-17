@@ -17,6 +17,9 @@
     const registeredHtmlPages = new Set(window.PAGE_FILE_CONFIG?.htmlPages || []);
     const registeredScriptPages = new Set(window.PAGE_FILE_CONFIG?.scriptPages || []);
     const VISITED_PAGES_STORAGE_KEY = "init-members:visited-pages";
+    const HISTORY_INDEX_KEY = "initMembersHistoryIndex";
+    let currentHistoryIndex = Number(window.history.state?.[HISTORY_INDEX_KEY]);
+    if (!Number.isInteger(currentHistoryIndex)) currentHistoryIndex = 0;
 
     function collectPages(items = []) {
         items.forEach((item) => {
@@ -121,9 +124,19 @@
 
     function updateHash(pageCode, replace = false) {
         const next = `#/${pageCode}`;
-        if (window.location.hash === next) return;
+        const sameHash = window.location.hash === next;
+        if (!replace && !sameHash) currentHistoryIndex += 1;
+        const nextState = {
+            ...(window.history.state || {}),
+            pageCode,
+            [HISTORY_INDEX_KEY]: currentHistoryIndex
+        };
+        if (sameHash) {
+            if (replace) window.history.replaceState(nextState, "", next);
+            return;
+        }
         const method = replace ? "replaceState" : "pushState";
-        window.history[method]({ pageCode }, "", next);
+        window.history[method](nextState, "", next);
     }
 
     function setSidebarOpen(open) {
@@ -331,18 +344,107 @@
 
     const PageManager = {
         current: null,
+        pages: new Map(),
         requestId: 0,
         controller: null,
 
-        async destroyCurrent() {
-            const current = this.current;
-            this.current = null;
-            if (!current?.module?.destroy) return;
+        async destroyPage(pageCode) {
+            const entry = this.pages.get(pageCode);
+            if (!entry) return;
+            if (this.current === entry) this.current = null;
             try {
-                await current.module.destroy();
+                if (typeof entry.module.destroy === "function") await entry.module.destroy();
             } catch (error) {
                 console.warn("[PageManager] 화면 정리 중 오류가 발생했습니다.", error);
+            } finally {
+                entry.root.remove();
+                this.pages.delete(pageCode);
             }
+        },
+
+        async releasePrevious(entry, nextPageCode) {
+            if (
+                !entry
+                || entry.pageCode === nextPageCode
+                || getPage(entry.pageCode)?.keepAlive === true
+            ) {
+                return;
+            }
+            await this.destroyPage(entry.pageCode);
+        },
+
+        async clear() {
+            this.requestId += 1;
+            this.controller?.abort();
+            this.controller = null;
+            const pageCodes = Array.from(this.pages.keys());
+            for (const pageCode of pageCodes) await this.destroyPage(pageCode);
+            document.getElementById("pageHost")?.replaceChildren();
+        },
+
+        hideCurrent(nextPageCode) {
+            if (!this.current || this.current.pageCode === nextPageCode) return;
+            this.current.scrollY = window.scrollY;
+            this.current.root.hidden = true;
+            this.current.root.setAttribute("aria-hidden", "true");
+        },
+
+        show(entry, options = {}) {
+            this.hideCurrent(entry.pageCode);
+            entry.root.hidden = false;
+            entry.root.removeAttribute("aria-hidden");
+            this.current = entry;
+
+            if (options.fromHash && Number.isInteger(options.historyIndex)) {
+                currentHistoryIndex = options.historyIndex;
+            }
+
+            markPageVisited(entry.pageCode);
+            updateShell(entry.pageCode);
+            if (!options.fromHash) {
+                updateHash(entry.pageCode, options.replaceHash);
+            } else if (routeFromHash() !== entry.pageCode) {
+                updateHash(entry.pageCode, true);
+            }
+            setSidebarOpen(false);
+
+            const explicitFocusTarget = entry.root.querySelector("[data-page-focus]");
+            const focusTarget = explicitFocusTarget || entry.root.querySelector("h1, h2") || entry.root;
+            if (!explicitFocusTarget) focusTarget.setAttribute?.("tabindex", "-1");
+            focusTarget.focus?.({ preventScroll: true });
+            window.scrollTo({ top: entry.scrollY || 0, behavior: "auto" });
+        },
+
+        async canLeaveCurrent(nextPageCode, options = {}) {
+            if (
+                options.skipBeforeLeave
+                || !this.current
+                || (
+                    this.current.pageCode === nextPageCode
+                    && !options.force
+                )
+                || typeof this.current.module.beforeLeave !== "function"
+            ) {
+                return true;
+            }
+            const allowed = await this.current.module.beforeLeave({
+                nextPageCode,
+                force: options.force === true
+            });
+            if (allowed === false) {
+                if (options.fromHash && Number.isInteger(options.historyIndex)) {
+                    const restoreDelta = currentHistoryIndex - options.historyIndex;
+                    if (restoreDelta) window.history.go(restoreDelta);
+                    else updateHash(this.current.pageCode, true);
+                } else if (options.fromHash) {
+                    window.history.forward();
+                } else {
+                    updateHash(this.current.pageCode, true);
+                }
+                setSidebarOpen(false);
+                return false;
+            }
+            return true;
         },
 
         async load(requestedPageCode, options = {}) {
@@ -378,6 +480,9 @@
             }
 
             if (this.current?.pageCode === pageCode && !options.force) {
+                if (options.fromHash && Number.isInteger(options.historyIndex)) {
+                    currentHistoryIndex = options.historyIndex;
+                }
                 if (options.fromHash && routeFromHash() !== pageCode) {
                     updateHash(pageCode, true);
                 }
@@ -385,11 +490,39 @@
                 return;
             }
 
+            if (!(await this.canLeaveCurrent(pageCode, options))) return;
+
             const requestId = ++this.requestId;
             this.controller?.abort();
+            const previousEntry = this.current;
+            const cached = !options.force ? this.pages.get(pageCode) : null;
+            if (cached) {
+                this.controller = null;
+                this.show(cached, options);
+                if (typeof cached.module.activate === "function") {
+                    try {
+                        await cached.module.activate({
+                            root: cached.root,
+                            user: state.user,
+                            navigate: App.navigate,
+                            refreshSession: App.refreshSession,
+                            routeContext: options.context || null
+                        });
+                    } catch (error) {
+                        if (requestId !== this.requestId || this.current !== cached) return;
+                        console.error("[PageManager] 화면 재활성화 실패", error);
+                        Common.ui.toast(error.message || "화면 데이터를 새로 불러오지 못했습니다.", "error");
+                    }
+                }
+                if (requestId !== this.requestId || this.current !== cached) return;
+                await this.releasePrevious(previousEntry, pageCode);
+                return;
+            }
+
             this.controller = new AbortController();
             Common.ui.showLoading("화면을 불러오고 있습니다.");
 
+            let createdEntry = null;
             try {
                 const [html, pageModule] = await Promise.all([
                     loadPageHtml(pageCode, this.controller.signal),
@@ -397,40 +530,37 @@
                 ]);
                 if (requestId !== this.requestId) return;
 
-                await this.destroyCurrent();
+                if (options.force) await this.destroyPage(pageCode);
+                if (pageCode !== "login") await this.destroyPage("login");
                 if (requestId !== this.requestId) return;
 
                 const host = document.getElementById("pageHost");
-                host.innerHTML = html;
-                const root = host.firstElementChild || host;
-                this.current = { pageCode, module: pageModule, root };
-
-                markPageVisited(pageCode);
-                updateShell(pageCode);
-                if (!options.fromHash) {
-                    updateHash(pageCode, options.replaceHash);
-                } else if (routeFromHash() !== pageCode) {
-                    updateHash(pageCode, true);
-                }
-                setSidebarOpen(false);
+                const template = document.createElement("template");
+                template.innerHTML = html.trim();
+                const root = template.content.firstElementChild;
+                if (!root) throw new Error(`${pageCode} 화면의 루트 요소를 찾을 수 없습니다.`);
+                root.hidden = true;
+                host.appendChild(root);
+                createdEntry = { pageCode, module: pageModule, root, scrollY: 0 };
+                this.pages.set(pageCode, createdEntry);
+                this.show(createdEntry, options);
 
                 if (typeof pageModule.init === "function") {
                     await pageModule.init({
                         root,
                         user: state.user,
                         navigate: App.navigate,
-                        refreshSession: App.refreshSession
+                        refreshSession: App.refreshSession,
+                        routeContext: options.context || null
                     });
                 }
                 if (requestId !== this.requestId) return;
 
-                const explicitFocusTarget = root.querySelector("[data-page-focus]");
-                const focusTarget = explicitFocusTarget || root.querySelector("h1, h2") || host;
-                if (!explicitFocusTarget) focusTarget.setAttribute?.("tabindex", "-1");
-                focusTarget.focus?.({ preventScroll: true });
-                window.scrollTo({ top: 0, behavior: "auto" });
+                this.show(createdEntry, options);
+                await this.releasePrevious(previousEntry, pageCode);
             } catch (error) {
                 if (error?.name === "AbortError") return;
+                if (createdEntry) await this.destroyPage(createdEntry.pageCode);
                 console.error("[PageManager] 화면 로드 실패", error);
                 Common.ui.toast(error.message || "화면을 불러오지 못했습니다.", "error", { duration: 0 });
 
@@ -469,6 +599,7 @@
     }
 
     async function logout() {
+        if (!(await PageManager.canLeaveCurrent("login"))) return;
         try {
             await Common.api.request("/auth/logout", {
                 method: "POST",
@@ -483,6 +614,7 @@
 
         state.user = null;
         renderNavigation();
+        await PageManager.clear();
         await PageManager.load("login", { replaceHash: true });
         Common.ui.toast("로그아웃했습니다.", "success");
     }
@@ -535,6 +667,7 @@
             state.user = null;
             renderNavigation();
             Common.ui.toast("로그인 세션이 만료되었습니다. 다시 로그인해 주세요.", "warning");
+            await PageManager.clear();
             await PageManager.load("login", { replaceHash: true });
         } finally {
             state.handlingUnauthorized = false;
@@ -550,9 +683,13 @@
         document.getElementById("refreshPageButton")?.addEventListener("click", () => App.refreshPage());
         document.getElementById("logoutButton")?.addEventListener("click", () => App.logout());
 
-        window.addEventListener("popstate", () => {
+        window.addEventListener("popstate", (event) => {
             const pageCode = routeFromHash() || (state.user ? "home" : "login");
-            PageManager.load(pageCode, { fromHash: true });
+            const historyIndex = Number(event.state?.[HISTORY_INDEX_KEY]);
+            PageManager.load(pageCode, {
+                fromHash: true,
+                historyIndex: Number.isInteger(historyIndex) ? historyIndex : undefined
+            });
         });
         window.addEventListener("app:unauthorized", handleUnauthorized);
         window.addEventListener("resize", () => {
@@ -569,9 +706,18 @@
         const appName = window.APP_NAME || "웹 사이트";
         const brandName = document.getElementById("appBrandName");
         if (brandName) brandName.textContent = appName;
+        window.history.replaceState(
+            {
+                ...(window.history.state || {}),
+                [HISTORY_INDEX_KEY]: currentHistoryIndex
+            },
+            "",
+            window.location.href
+        );
         bindShellEvents();
 
-        await loadSitePreferences();
+        // 포털 스킨은 보조 설정이므로 DB 장애 시 인증 화면 표시를 막지 않는다.
+        void loadSitePreferences();
         await refreshSession({ silent: true });
         const requested = routeFromHash();
         const initialPage = state.user && !requiresPasswordChange()

@@ -1,6 +1,6 @@
 # INIT Members
 
-FastAPI, Oracle 시스템 DB, 정적 HTML/CSS/JavaScript로 구성한 인아이티 직원전용 업무 포털입니다. 로그인 세션, 계정, 사용자, 공지사항과 AI 학습 현황 기능을 제공합니다.
+FastAPI, Oracle 시스템 DB, 정적 HTML/CSS/JavaScript로 구성한 인아이티 경영진용 인트라넷입니다. 임직원·협력업체·계약 및 프리랜스 인력, 사업·입찰, 프로젝트, 실제 투입과 연간 사업·인력계획을 통합 관리합니다.
 
 프론트엔드는 빌드 과정 없이 `frontend/`의 정적 파일을 그대로 서비스하며 Node.js나 npm 설치는 필요하지 않습니다. 기업 홈페이지는 별도 `init-homepage` 프로젝트에서 관리합니다.
 
@@ -11,8 +11,13 @@ FastAPI, Oracle 시스템 DB, 정적 HTML/CSS/JavaScript로 구성한 인아이�
 - 일반 사용자 가입 및 관리자 승인
 - 내 계정 정보, 이름, 이메일, 비밀번호 관리
 - 관리자 사용자 관리
+- 본사·협력업체·계약 및 프리랜스 인력 관리
+- 사업·입찰·수주 프로젝트 관리
+- 참여회사와 확정 프로젝트 투입 관리
+- 계획 시나리오별 사업·인력 드래그 앤 드롭 시뮬레이션
+- 월별 M/M, 예상 매출·원가·영업이익과 인력 과부하 계산
 - 공지사항과 첨부 파일 관리
-- AI 학습 트렌드와 사용자·콘텐츠 통계 대시보드
+- 입찰 파이프라인·예상 손익·인력 위험을 요약하는 경영 대시보드
 - hash route와 페이지 수명주기를 사용하는 인증 업무 SPA
 - `database/*.sql`의 SQL ID를 이용한 정적 SQL 분리
 
@@ -32,8 +37,16 @@ FastAPI, Oracle 시스템 DB, 정적 HTML/CSS/JavaScript로 구성한 인아이�
 │     ├─ home.py
 │     ├─ account.py
 │     ├─ admin_users.py
+│     ├─ admin_companies.py
+│     ├─ admin_projects.py
+│     ├─ project_assignments.py
+│     ├─ planning_scenarios.py
 │     └─ admin_notices.py
-├─ database/                      # SQL ID별 정적 SQL
+├─ database/                      # SQL ID별 정적 SQL과 시스템 DB 수명주기
+│  ├─ INIT_SYSTEM_DDL.sql         # 신규 DB 전체 원본
+│  ├─ INIT_SYSTEM_ALT.sql         # 기존 DB idempotent 증분 변경
+│  ├─ INIT_SYSTEM_DROP.sql        # 전체 시스템 객체 제거(수동 실행)
+│  └─ INIT_SYSTEM_TRUC.sql        # 전체 데이터 초기화(수동 실행)
 ├─ frontend/
 │  ├─ index.html                  # 인증 업무 SPA 셸 (/)
 │  ├─ config/app.config.js        # 프론트 표시 이름과 공통 UI 설정
@@ -201,6 +214,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\git-publish-main.p
 
 `INIT_SYSTEM_DDL.sql`은 신규 DB의 전체 생성 기준이고, `INIT_SYSTEM_ALT.sql`은 기존 DB를 DROP하지 않고 테이블·컬럼·제약조건을 추가하는 증분 스크립트입니다. Oracle은 기존 컬럼 사이에 새 컬럼을 물리적으로 삽입할 수 없으므로 신규 컬럼은 두 파일 모두 해당 테이블의 맨 뒤에 같은 순서로 추가합니다. 기존 컬럼의 타입·NULL·DEFAULT 변경이나 데이터 보정이 필요하면 영향도를 확인한 별도 버전 블록으로 작성하며 자동 DROP이나 테이블 재생성은 하지 않습니다.
 
+전체 재설치가 필요할 때만 `@database/INIT_SYSTEM_DROP.sql <DB_OWNER>` 형식으로 소유자명을 명시해 수동 실행합니다. 스키마를 유지하고 모든 데이터를 초기화할 때는 `@database/INIT_SYSTEM_TRUC.sql <DB_OWNER>`를 사용합니다. 두 스크립트는 실행 인자·`SESSION_USER`·`CURRENT_SCHEMA`가 모두 일치하지 않으면 중단됩니다. Oracle FK를 임의로 비활성화하지 않기 위해 `INIT_SYSTEM_TRUC.sql`은 이름과 달리 자식 테이블부터 안전하게 `DELETE`하고 마지막에 한 번 커밋합니다. 두 스크립트 모두 애플리케이션 API나 서버 시작 과정에서 자동 실행하지 않습니다.
+
 ## 기본 페이지와 API
 
 | 페이지 | API prefix | 접근 범위 |
@@ -210,12 +225,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\git-publish-main.p
 | `account` | `/api/account` | 로그인 사용자 본인 |
 | `admin-users` | `/api/admin/users` | 관리자 |
 | `admin-notices` | `/api/admin/notices` | 관리자 |
+| `admin-projects` | `/api/admin/projects` | 관리자 |
+| `workforce-planning` | `/api/planning/scenarios` | 관리자 |
+| `project-assignments` | `/api/project-assignments` | 관리자 |
+
+`workforce-planning`은 계획 시나리오를 실제 확정 투입과 분리합니다. 사용자는 사업 후보와 내부·협력업체·프리랜스 인력을 작업공간에서 배치하고 월별 M/M 및 손익을 확인한 뒤, 전체 계획안을 하나의 트랜잭션으로 임시 저장하거나 최종 확정합니다. `revisionNo`로 동시수정 충돌을 방지하며 확정안은 직접 수정하지 않습니다.
+
+`project-assignments`의 `확정 투입 배치 보드`는 계획 화면의 인력 풀·프로젝트 월 타임라인 개념을 재사용합니다. 인력을 프로젝트 월에 배치하거나 기존 배치 카드를 선택·이동하면 기존 상세 편집기로 연결되며, 참여회사·단가·M/M을 검토한 뒤 저장합니다. 참여회사와 실제 투입 수정·삭제는 `versionToken`을 비교해 오래된 화면이 다른 관리자의 최신 변경을 덮어쓰지 못하게 합니다.
+
+Oracle `NUMBER(18)` 금액은 브라우저의 JSON number 안전 범위를 넘을 수 있으므로 계획·투입 API는 금액 요청과 응답을 10진수 문자열로 전달합니다. 프론트도 금액 합계와 손익 계산에 `BigInt`를 사용해 18자리 금액의 반올림 손실을 막습니다.
+
+`home`은 기준연도별 입찰 대상, 가중 예상수주, 월별 계획 매출·원가·영업이익, 인력 부족·과부하와 보유인력 구성을 요약합니다. 회사·계획 증분 스키마가 아직 적용되지 않은 초기 DB에서는 홈 전체를 실패시키지 않고 해당 영역에 `INIT_SYSTEM_ALT.sql` 적용 필요 상태를 표시합니다.
 
 관리자 메뉴를 화면에서 숨기는 것은 보조 UI일 뿐 보안 경계가 아닙니다. 관리자 API는 서버 세션의 역할을 다시 검증해야 합니다.
-
-홈 대시보드는 사용자 증가, 최근 세션 활동, 게시 콘텐츠 구성을 실제 시스템 DB 데이터로 집계합니다. AI 학습 트렌드는 `INIT$_TB_AI_TRAINING_RUN`에 외부 학습 파이프라인이 기록한 실행 이력을 사용하며, 웹 애플리케이션은 해당 테이블에 임의 학습 결과를 생성하거나 수정하는 API를 노출하지 않습니다. 학습 이력이 없으면 차트에만 `샘플 미리보기`가 표시되고 KPI와 인사이트는 실제 집계값을 유지합니다.
-
-`INIT$_TB_AI_TRAINING_RUN.STATUS_CODE`는 `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` 중 하나를 사용합니다. 완료된 실행에 `ACCURACY_SCORE`, `LOSS_SCORE`, `DATASET_ROW_COUNT`, `EPOCH_COUNT`, `COMPLETED_AT`을 기록하면 홈의 AI 정확도 트렌드와 운영 현황에 반영됩니다.
 
 ## semantic 페이지 추가
 

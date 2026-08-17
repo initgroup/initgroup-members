@@ -23,11 +23,13 @@ from backend.database import close_db_pool
 from backend.rate_limit import check_auth_rate_limit
 from backend.routers import (
     account,
+    admin_companies,
     admin_notices,
     admin_projects,
     admin_users,
     auth,
     home,
+    planning_scenarios,
     project_assignments,
     site_settings,
 )
@@ -273,11 +275,21 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(home.router, prefix="/api/home", tags=["home"])
 app.include_router(account.router, prefix="/api/account", tags=["account"])
 app.include_router(site_settings.public_router, prefix="/api/site", tags=["site"])
+app.include_router(
+    admin_companies.router,
+    prefix="/api/admin/companies",
+    tags=["admin-companies"],
+)
 app.include_router(admin_users.router, prefix="/api/admin/users", tags=["admin-users"])
 app.include_router(
     admin_projects.router,
     prefix="/api/admin/projects",
     tags=["admin-projects"],
+)
+app.include_router(
+    planning_scenarios.router,
+    prefix="/api/planning/scenarios",
+    tags=["planning-scenarios"],
 )
 app.include_router(
     project_assignments.router,

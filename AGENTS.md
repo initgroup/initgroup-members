@@ -21,6 +21,7 @@
 - 서버 세션 인증/인가는 `backend/auth_context.py`를 기준으로 합니다.
 - API 라우터는 `backend/routers/*.py`에 두고 `main.py`에서 semantic API prefix로 등록합니다.
 - 정적 SQL은 `database/*.sql`에 `-- [SQL_ID]` 섹션으로 구분합니다.
+- 신규 전체 스키마는 `database/INIT_SYSTEM_DDL.sql`, 기존 DB 증분은 `database/INIT_SYSTEM_ALT.sql`, 전체 제거와 데이터 초기화는 각각 `database/INIT_SYSTEM_DROP.sql`, `database/INIT_SYSTEM_TRUC.sql`에서 관리합니다. DROP/TRUC 스크립트는 자동 실행하지 않습니다.
 - 프론트는 빌드 과정이 없는 정적 SPA입니다. `frontend/index.html`이 셸이고 `PageManager`가 `frontend/pages/{page-name}.html`과 `frontend/js/{page-name}.js`를 동적으로 로드합니다.
 - 메뉴와 페이지 파일 등록은 `frontend/config/menu.config.js`의 `MENU_CONFIG`, `PAGE_FILE_CONFIG.htmlPages`, `PAGE_FILE_CONFIG.scriptPages`에서 관리합니다.
 
@@ -33,6 +34,9 @@
 | `account` | `backend/routers/account.py` | `/api/account` |
 | `admin-users` | `backend/routers/admin_users.py` | `/api/admin/users` |
 | `admin-notices` | `backend/routers/admin_notices.py` | `/api/admin/notices` |
+| `admin-projects` | `backend/routers/admin_projects.py` | `/api/admin/projects` |
+| `workforce-planning` | `backend/routers/planning_scenarios.py` | `/api/planning/scenarios` |
+| `project-assignments` | `backend/routers/project_assignments.py` | `/api/project-assignments` |
 
 ## 인증·인가 필수 기준
 
@@ -115,6 +119,8 @@ SELECT USER_ID
 
 - `database/INIT_SYSTEM_DDL.sql`은 신규 DB 전체 생성 기준입니다.
 - 기존 DB 변경은 테이블을 DROP하거나 다시 만들지 않고 `database/INIT_SYSTEM_ALT.sql`에 존재 여부를 확인하는 idempotent 증분 블록으로 추가합니다.
+- 계획 시뮬레이션 데이터는 확정·실제 투입 데이터와 분리합니다. 계획안 전체 저장은 시나리오 행 잠금과 revision 검증 후 하나의 트랜잭션으로 처리하고 월별 M/M은 조회 가능한 행 구조로 저장합니다.
+- `INIT_SYSTEM_DROP.sql`과 `INIT_SYSTEM_TRUC.sql`은 정확한 시스템 객체 allowlist만 사용하며 실행 인자로 지정한 DB 소유자와 `SESSION_USER`·`CURRENT_SCHEMA`가 모두 일치해야 합니다. 사용자가 실행을 명시적으로 요청하지 않으면 실행하지 않습니다.
 - 새 컬럼은 `INIT_SYSTEM_DDL.sql`의 해당 테이블 맨 뒤와 `INIT_SYSTEM_ALT.sql`에 같은 순서로 추가합니다. Oracle은 기존 컬럼 사이에 새 컬럼을 물리적으로 삽입할 수 없으므로 중간 삽입을 전제로 작성하지 않습니다.
 - 컬럼 타입, NULL, DEFAULT 또는 데이터 보정이 필요한 변경은 기존 데이터 영향도를 확인할 수 있도록 별도 버전 블록으로 작성하고 자동 DROP/TRUNCATE를 사용하지 않습니다.
 

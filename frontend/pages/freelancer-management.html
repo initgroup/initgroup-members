@@ -1,0 +1,30 @@
+<section class="page" id="page-freelancer-management" aria-labelledby="freelancerManagementTitle">
+    <header class="page-header"><div><h2 id="freelancerManagementTitle">프리랜스 관리</h2><p>프로젝트에 투입할 프리랜서를 등록하며 소속회사는 ‘프리랜서’로 표시됩니다.</p></div><div class="page-actions"><button id="newFreelancerButton" class="button button-primary" type="button">새 프리랜서</button></div></header>
+    <section class="panel" aria-labelledby="freelancerListTitle">
+        <div class="panel-header"><div><h3 id="freelancerListTitle">프리랜서 목록</h3><p>행을 선택하면 하단에서 상세정보를 수정할 수 있습니다.</p></div></div>
+        <div class="table-wrap"><table class="data-table company-employee-table"><thead><tr><th>성명</th><th>소속회사</th><th>전문분야/직책</th><th>이메일</th><th>휴대전화</th><th>사용</th></tr></thead><tbody id="freelancerTableBody"></tbody></table></div>
+        <p id="freelancerListStatus" class="inline-status" aria-live="polite"></p>
+    </section>
+    <section class="panel" aria-labelledby="freelancerEditorTitle">
+        <div class="panel-header"><div><h3 id="freelancerEditorTitle">프리랜서 등록</h3><p>프리랜서 기본정보와 프로젝트 투입 시 표시할 정보를 입력합니다.</p></div></div>
+        <form id="freelancerForm">
+            <input id="freelancerCompanyId" type="hidden"><input id="freelancerEmployeeId" type="hidden">
+            <div class="form-grid company-form-grid">
+                <label class="field"><span class="required">성명</span><input id="freelancerName" class="input" maxlength="200" required></label>
+                <label class="field"><span>소속회사</span><input class="input" value="프리랜서" disabled></label>
+                <label class="field"><span>관리번호</span><input id="freelancerEmployeeNo" class="input" maxlength="100"></label>
+                <label class="field"><span>전문분야</span><input id="freelancerDepartment" class="input" maxlength="200"></label>
+                <label class="field"><span>등급/직급</span><input id="freelancerPosition" class="input" maxlength="100"></label>
+                <label class="field"><span>담당 역할</span><input id="freelancerJobTitle" class="input" maxlength="100"></label>
+                <label class="field"><span>이메일</span><input id="freelancerEmail" class="input" type="email" maxlength="300"></label>
+                <label class="field"><span>휴대전화</span><input id="freelancerMobile" class="input" maxlength="50"></label>
+                <label class="field"><span>계약 시작일</span><input id="freelancerJoinDate" class="input" type="date"></label>
+                <label class="field"><span>계약 종료일</span><input id="freelancerLeaveDate" class="input" type="date"></label>
+                <label class="field"><span>사용 여부</span><select id="freelancerUseYn" class="select"><option value="Y">사용</option><option value="N">미사용</option></select></label>
+                <label class="field field-span-all"><span>비고</span><textarea id="freelancerNote" class="textarea" maxlength="2000"></textarea></label>
+            </div>
+            <p id="freelancerEditorStatus" class="inline-status" aria-live="polite"></p>
+            <div class="form-actions"><button id="deleteFreelancerButton" class="button button-danger" type="button" hidden>삭제</button><button id="clearFreelancerButton" class="button button-secondary" type="button">새로 입력</button><button class="button button-primary" type="submit">저장</button></div>
+        </form>
+    </section>
+</section>
