@@ -2441,7 +2441,7 @@ body.auth-screen .page-host {
     margin-top: 18px;
 }
 
-.dialog.assignment-board-dialog {
+.dialog.assignment-board-dialog[open] {
     display: grid;
     width: min(1720px, calc(100vw - 28px));
     max-width: none;
