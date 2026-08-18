@@ -4,9 +4,6 @@
             <h2 id="adminUsersTitle">임직원 관리</h2>
             <p>임직원 계정과 권한, 사용 여부를 관리합니다. 모든 변경은 서버 권한 검사를 통과해야 합니다.</p>
         </div>
-        <div class="page-actions">
-            <button id="newUserButton" class="button button-primary" type="button">새 임직원</button>
-        </div>
     </header>
 
     <section class="panel">
@@ -23,20 +20,13 @@
                     <option value="N">중지</option>
                 </select>
             </label>
-            <label class="field">
-                <span>조회 건수</span>
-                <select id="userLimit" class="select">
-                    <option value="50">50</option>
-                    <option value="100" selected>100</option>
-                    <option value="200">200</option>
-                </select>
-            </label>
+            <input id="userLimit" type="hidden" value="100">
             <button class="button button-primary" type="submit">조회</button>
         </form>
 
         <p id="userListStatus" class="inline-status" aria-live="polite"></p>
-        <div class="table-wrap">
-            <table class="data-table admin-user-table" role="grid" aria-label="임직원 목록">
+        <div class="table-wrap grid-five-row-viewport">
+            <table class="data-table admin-user-table" role="grid" aria-label="임직원 목록" data-grid-pagination="off">
                 <thead>
                     <tr>
                         <th scope="col">USER_ID</th>
@@ -56,7 +46,12 @@
                 <tbody id="userTableBody"></tbody>
             </table>
         </div>
+        <nav id="userPagination" class="grid-pagination" aria-label="임직원 목록 페이지"></nav>
     </section>
+
+    <div class="list-editor-action-bar">
+        <button id="newUserButton" class="button button-primary" type="button">새 임직원</button>
+    </div>
 
     <section id="userEditorPanel" class="panel" aria-labelledby="userEditorTitle">
         <div class="panel-header">

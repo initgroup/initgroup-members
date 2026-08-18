@@ -1,0 +1,161 @@
+<section class="page workforce-management-page" id="page-workforce-management" aria-labelledby="workforceManagementTitle">
+    <header class="page-header workforce-management-header">
+        <div>
+            <p class="page-kicker">WORKFORCE PORTFOLIO</p>
+            <h2 id="workforceManagementTitle">사업·인력 통합 대시보드</h2>
+            <p>선택 연도와 수행기간이 겹치는 확정·계획 프로젝트 및 가용 인력을 한 화면에서 검토합니다.</p>
+        </div>
+        <div class="workforce-management-header-actions">
+            <button id="workforceManagementRefreshButton" class="button button-secondary" type="button"><span aria-hidden="true">↻</span> 새로고침</button>
+        </div>
+    </header>
+
+    <section class="workforce-management-toolbar" aria-label="대시보드 조회 조건">
+        <label class="field workforce-management-year-field"><span>연도</span><select id="workforceManagementYear" class="select"></select></label>
+        <label class="field workforce-management-project-field"><span>프로젝트</span><select id="workforceManagementProject" class="select"><option value="">전체 프로젝트</option></select></label>
+        <label class="field workforce-management-search-field"><span>프로젝트·인력 검색</span><input id="workforceManagementSearch" class="input" type="search" placeholder="프로젝트명, 고객사, 인력명"></label>
+        <div class="workforce-management-view-tabs" role="group" aria-label="프로젝트 유형 필터">
+            <button class="is-active" type="button" data-workforce-filter="all" aria-pressed="true">전체</button>
+            <button type="button" data-workforce-filter="confirmed" aria-pressed="false">확정</button>
+            <button type="button" data-workforce-filter="planning" aria-pressed="false">계획</button>
+        </div>
+        <p id="workforceManagementStatus" class="inline-status workforce-management-toolbar-status" aria-live="polite"></p>
+    </section>
+
+    <section class="workforce-management-metrics" aria-label="투입 현황 요약">
+        <article><span>검토 프로젝트</span><strong id="workforceManagementProjectMetric">0개</strong><small id="workforceManagementProjectMetricNote">확정 0 · 계획 0</small></article>
+        <article><span>투입 인력·건</span><strong id="workforceManagementAssignmentMetric">0명 · 0건</strong><small>동일 인력의 복수 프로젝트 투입 허용</small></article>
+        <article><span>가용 인력</span><strong id="workforceManagementAvailableMetric">0명</strong><small id="workforceManagementAvailableMetricNote">월 1.0 M/M 미만 기준</small></article>
+        <article class="is-warning"><span>중복 투입 알림</span><strong id="workforceManagementWarningMetric">0건</strong><small>차단하지 않고 검토 정보로 안내</small></article>
+    </section>
+
+    <section id="workforceManagementAlerts" class="workforce-management-alerts" aria-labelledby="workforceManagementAlertTitle" hidden>
+        <div class="workforce-management-section-heading">
+            <div><h3 id="workforceManagementAlertTitle">동일 기간 복수 프로젝트 투입</h3><p>계약 M/M과 무관하게 같은 달에 둘 이상의 프로젝트가 있으면 알려드립니다. 저장은 제한하지 않습니다.</p></div>
+            <span id="workforceManagementAlertCount" class="count-badge">0건</span>
+        </div>
+        <ul id="workforceManagementAlertList" class="workforce-management-alert-list"></ul>
+    </section>
+
+    <section id="workforceManagementBoard" class="workforce-management-board" aria-labelledby="workforceManagementTimelineTitle" data-view="project" data-zoom="normal">
+        <div class="workforce-management-board-toolbar">
+            <div class="workforce-management-board-views" role="group" aria-label="대시보드 표현 유형">
+                <button class="is-active" type="button" data-workforce-view="project" aria-pressed="true">프로젝트 중심</button>
+                <button type="button" data-workforce-view="worker" aria-pressed="false">인력 중심</button>
+            </div>
+            <div class="workforce-management-board-tools">
+                <span id="workforceManagementEditGuide" class="workforce-management-edit-guide"><strong>인력 배치 방법</strong> 편집 모드를 켠 후 왼쪽 인력을 프로젝트로 드래그하세요.</span>
+                <button id="workforceManagementFullRangeButton" class="button button-secondary button-small" type="button" aria-pressed="false" title="조회된 프로젝트와 투입인력의 전체 기간을 보드 너비에 맞춰 표시합니다."><span aria-hidden="true">↔</span> 전체기간</button>
+                <button id="workforceManagementDefaultViewButton" class="button button-secondary button-small" type="button" title="전체 년월을 월별 기본 폭과 100% 배율로 표시합니다. 약 24개월 단위로 가로 스크롤할 수 있습니다."><span aria-hidden="true">↺</span> 기본보기</button>
+                <div class="workforce-management-zoom" role="group" aria-label="보드 확대 축소">
+                    <button type="button" data-workforce-zoom="out" aria-label="보드 축소">−</button>
+                    <output id="workforceManagementZoomValue">100%</output>
+                    <button type="button" data-workforce-zoom="in" aria-label="보드 확대">＋</button>
+                </div>
+                <button id="workforceManagementMaximizeButton" class="button button-secondary button-small" type="button" aria-pressed="false"><span aria-hidden="true">⛶</span> 최대화</button>
+            </div>
+        </div>
+        <div id="workforceManagementProjectPalette" class="workforce-management-project-palette" aria-label="드래그할 프로젝트" hidden></div>
+        <p id="workforceManagementBoardStatus" class="inline-status workforce-management-board-status" aria-live="polite"></p>
+
+        <div class="workforce-management-dashboard-grid">
+        <aside class="workforce-management-worker-panel" aria-labelledby="workforceManagementWorkerTitle">
+            <div class="workforce-management-section-heading">
+                <div><h3 id="workforceManagementWorkerTitle">인력 가용 현황</h3><p>월별 총 M/M과 프로젝트 중복 여부</p></div>
+                <span id="workforceManagementWorkerCount" class="count-badge">0명</span>
+            </div>
+            <label class="field workforce-management-worker-filter"><span class="sr-only">인력 유형</span><select id="workforceManagementWorkerType" class="select"><option value="">전체 인력</option><option value="INTERNAL">내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
+            <label class="field workforce-management-worker-search"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
+            <div id="workforceManagementWorkers" class="workforce-management-worker-list" aria-live="polite"></div>
+        </aside>
+
+        <section class="workforce-management-timeline-panel">
+            <div class="workforce-management-section-heading workforce-management-timeline-heading">
+                <div><h3 id="workforceManagementTimelineTitle">인력·프로젝트·기간 보드</h3><p id="workforceManagementTimelineDescription">인력별 월 셀에서 여러 프로젝트 투입과 가용 상태를 한 번에 비교합니다.</p></div>
+                <div class="workforce-management-timeline-actions">
+                    <label id="workforceManagementProjectSortField" class="field workforce-management-project-sort">
+                        <span>프로젝트 정렬</span>
+                        <select id="workforceManagementProjectSort" class="select">
+                            <option value="start">시작일</option>
+                            <option value="customer">발주처</option>
+                        </select>
+                    </label>
+                    <div class="workforce-management-legend" aria-label="타임라인 범례"><span class="is-confirmed">확정 투입</span><span class="is-planning">계획 투입</span><span class="is-overlap">중복 알림</span></div>
+                    <button id="workforceManagementApplyDraftsButton" class="button button-primary button-small" type="button" hidden>변경사항 저장</button>
+                    <button id="workforceManagementEditModeButton" class="button workforce-management-edit-mode-button" type="button"
+                            aria-pressed="false" aria-describedby="workforceManagementEditGuide"
+                            title="편집 모드를 켜면 인력 추가, 배치 순서 변경 및 일괄 저장을 사용할 수 있습니다.">
+                        <span class="workforce-management-edit-mode-icon" aria-hidden="true">✎</span>
+                        <span class="workforce-management-edit-mode-copy"><strong data-edit-mode-label>편집 모드</strong><small>인력 배치·순서 변경</small></span>
+                    </button>
+                </div>
+            </div>
+            <div class="workforce-management-timeline-scroll">
+                <div id="workforceManagementMonthHeader" class="workforce-management-month-header" aria-hidden="true"></div>
+                <div id="workforceManagementLanes" class="workforce-management-lanes"></div>
+            </div>
+        </section>
+        </div>
+    </section>
+
+    <dialog id="workforceManagementQuickDialog" class="dialog workforce-management-quick-dialog" aria-labelledby="workforceManagementQuickTitle">
+        <form id="workforceManagementQuickForm">
+            <header class="dialog-header">
+                <div><p class="page-kicker">QUICK ASSIGNMENT</p><h3 id="workforceManagementQuickTitle">투입 빠른 설정</h3><p id="workforceManagementQuickProject"></p></div>
+                <button class="dialog-close" type="button" data-workforce-quick-close aria-label="빠른 설정 닫기">×</button>
+            </header>
+            <div class="dialog-body">
+                <div class="workforce-management-quick-worker"><strong id="workforceManagementQuickWorker"></strong><span id="workforceManagementQuickCompany"></span></div>
+                <div class="workforce-management-quick-period">
+                    <label class="field"><span>투입 구분</span><select id="workforceManagementQuickAssignmentStatus" class="select" required><option value="CONFIRMED">확정 투입</option><option value="PLANNED">계획 투입</option></select></label>
+                    <label class="field"><span>투입 시작일</span><input id="workforceManagementQuickStart" class="input" type="date" required></label>
+                    <label class="field"><span>투입 종료일</span><input id="workforceManagementQuickEnd" class="input" type="date" required></label>
+                </div>
+                <p class="workforce-management-quick-period-note">프로젝트 기간은 신규 투입의 기본값입니다. 실제 투입기간은 프로젝트 기간보다 길게 설정할 수 있으며, 이후 프로젝트 기간을 바꿔도 저장된 투입기간은 자동 변경되지 않습니다.</p>
+                <div class="workforce-management-quick-mm">
+                    <label for="workforceManagementQuickMm">기본 월 M/M</label>
+                    <input id="workforceManagementQuickMmRange" type="range" min="0" max="1" step="0.05" value="1">
+                    <input id="workforceManagementQuickMm" class="input" type="number" min="0" max="1" step="0.05" value="1" required>
+                    <button id="workforceManagementQuickApplyMm" class="button button-secondary button-small" type="button">선택 월에 동일 적용</button>
+                </div>
+                <div id="workforceManagementQuickMonths" class="workforce-management-quick-months" aria-label="월별 투입 미리보기"></div>
+                <div class="workforce-management-quick-total">
+                    <label class="field"><span>총 M/M</span><input id="workforceManagementQuickTotalMm" class="input" type="number" min="0" step="0.01" value="1" required></label>
+                    <button id="workforceManagementQuickDistributeMm" class="button button-secondary" type="button">균등배분</button>
+                    <small>총 M/M을 기준으로 선택된 월에 나누고, 아래 월별 값을 다시 개별 조정할 수 있습니다.</small>
+                </div>
+                <div id="workforceManagementQuickAllocationInputs" class="workforce-management-quick-allocation-inputs" aria-label="월별 M/M 입력"></div>
+                <details class="workforce-management-quick-details">
+                    <summary>직책·업무·단가·비고 추가 설정</summary>
+                    <div class="workforce-management-quick-detail-grid">
+                        <label class="field"><span>직책</span><input id="workforceManagementQuickRole" class="input" maxlength="100" placeholder="PM, PL 등"></label>
+                        <label class="field" data-workforce-admin-cost><span>원가단가</span><input id="workforceManagementQuickCost" class="input" type="number" min="0" step="1" value="0"></label>
+                        <label class="field"><span>매출단가</span><input id="workforceManagementQuickSales" class="input" type="number" min="0" step="1" value="0"></label>
+                        <label class="field workforce-management-quick-detail-wide"><span>주요업무</span><textarea id="workforceManagementQuickPrimaryDuty" class="textarea" rows="2" maxlength="1000" placeholder="프로젝트에서 담당할 주요업무"></textarea></label>
+                        <label class="field workforce-management-quick-detail-wide"><span>비고</span><input id="workforceManagementQuickNote" class="input" maxlength="2000"></label>
+                    </div>
+                </details>
+                <p id="workforceManagementQuickStatus" class="inline-status" aria-live="polite"></p>
+            </div>
+            <footer class="dialog-footer">
+                <button id="workforceManagementQuickDelete" class="button button-danger" type="button" hidden>투입 해제</button>
+                <span class="dialog-footer-spacer"></span>
+                <button class="button button-secondary" type="button" data-workforce-quick-close>취소</button>
+                <button id="workforceManagementQuickApplyDraft" class="button button-secondary" type="button" hidden>설정만 적용</button>
+                <button id="workforceManagementQuickSubmit" class="button button-primary" type="submit">저장하고 보드 반영</button>
+            </footer>
+        </form>
+    </dialog>
+
+    <div id="workforceManagementEditor" class="workforce-management-editor" role="dialog" aria-modal="true" aria-labelledby="workforceManagementEditorTitle" hidden>
+        <button class="workforce-management-editor-backdrop" type="button" data-workforce-editor-close aria-label="편집 화면 닫기"></button>
+        <section class="workforce-management-editor-sheet">
+            <header class="workforce-management-editor-header">
+                <div><p class="page-kicker">EDIT WORKSPACE</p><h2 id="workforceManagementEditorTitle">투입 편집</h2><p id="workforceManagementEditorDescription">대시보드의 조회 조건을 유지한 채 상세 정보를 편집합니다.</p></div>
+                <button class="button button-secondary workforce-management-editor-close" type="button" data-workforce-editor-close><span aria-hidden="true">×</span> 닫기</button>
+            </header>
+            <p id="workforceManagementEditorStatus" class="inline-status" aria-live="polite"></p>
+            <div id="workforceManagementEditorHost" class="workforce-management-editor-host"></div>
+        </section>
+    </div>
+</section>

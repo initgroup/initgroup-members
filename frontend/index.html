@@ -63,6 +63,23 @@
                 <div class="app-header-actions">
                     <span id="headerUserName" class="header-user-name"></span>
                     <button id="refreshPageButton" class="button button-quiet" type="button">새로고침</button>
+                    <button id="closeCurrentPageButton" class="button button-quiet page-close-button" type="button" title="현재 페이지 닫기" disabled>
+                        <svg class="page-close-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <rect x="3.5" y="4" width="17" height="16" rx="3"></rect>
+                            <path d="M3.5 8.5h17"></path>
+                            <path d="m9 12 6 5m0-5-6 5"></path>
+                        </svg>
+                        <span class="page-close-label">현재 닫기</span>
+                    </button>
+                    <button id="closeAllPagesButton" class="button button-quiet page-close-button page-close-all-button" type="button" title="전체 페이지 닫기" disabled>
+                        <svg class="page-close-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 4h9.5A2.5 2.5 0 0 1 20 6.5V16"></path>
+                            <rect x="3.5" y="7.5" width="14.5" height="13" rx="2.5"></rect>
+                            <path d="M3.5 11.5H18"></path>
+                            <path d="m8.5 14 4.5 4m0-4-4.5 4"></path>
+                        </svg>
+                        <span class="page-close-label">전체 닫기</span>
+                    </button>
                     <button id="logoutButton" class="button button-secondary" type="button">로그아웃</button>
                 </div>
             </header>

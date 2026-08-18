@@ -256,7 +256,9 @@
     function setInlineStatus(element, message = "", type = "") {
         if (!element) return;
         element.textContent = message;
-        element.className = `inline-status${type ? ` is-${type}` : ""}`;
+        element.classList.add("inline-status");
+        element.classList.remove("is-error", "is-success", "is-warning");
+        if (type) element.classList.add(`is-${type}`);
     }
 
     function openNextMessageDialog() {
@@ -322,6 +324,23 @@
     function alertMessage(message, options = {}) {
         return showMessageDialog(message, "alert", options);
     }
+
+    function configureDateInput(input) {
+        if (!(input instanceof HTMLInputElement) || input.type !== "date") return;
+        if (!input.max || input.max > "9999-12-31") input.max = "9999-12-31";
+        input.dataset.fourDigitYear = "true";
+    }
+
+    function normalizeDateInputYear(input) {
+        configureDateInput(input);
+        const match = String(input.value || "").match(/^(\d{5,})-(\d{2})-(\d{2})$/);
+        if (!match) return;
+        input.value = `${match[1].slice(0, 4)}-${match[2]}-${match[3]}`;
+    }
+
+    document.addEventListener("focusin", (event) => configureDateInput(event.target));
+    document.addEventListener("input", (event) => normalizeDateInputYear(event.target));
+    document.querySelectorAll('input[type="date"]').forEach(configureDateInput);
 
     document.getElementById("commonMessageDialog")?.addEventListener("close", completeMessageDialog);
     document.getElementById("commonMessageDialog")?.addEventListener("cancel", (event) => {

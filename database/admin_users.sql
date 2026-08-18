@@ -1,3 +1,20 @@
+-- [ADMIN_USER_COUNT]
+SELECT COUNT(*) AS TOTAL_COUNT
+  FROM "INIT$_TB_USER"
+ WHERE 1=1
+   AND (
+        :keyword IS NULL
+        OR UPPER(LOGIN_ID) LIKE :keyword
+        OR UPPER(USER_NAME) LIKE :keyword
+        OR UPPER(EMAIL) LIKE :keyword
+        OR UPPER(EMPLOYEE_NO) LIKE :keyword
+        OR UPPER(DEPARTMENT_NAME) LIKE :keyword
+        OR UPPER(POSITION_NAME) LIKE :keyword
+        OR UPPER(JOB_TITLE) LIKE :keyword
+       )
+   AND (:useYn = 'ALL' OR USE_YN = :useYn)
+;
+
 -- [ADMIN_USER_LIST]
 SELECT USER_ID
      , LOGIN_ID
@@ -27,51 +44,22 @@ SELECT USER_ID
      , PHOTO_CONTENT_TYPE
      , PHOTO_FILE_SIZE
      , PHOTO_UPDATED_AT
-  FROM (
-        SELECT USER_ID
-             , LOGIN_ID
-             , USER_NAME
-             , EMAIL
-             , ROLE_CODE
-             , USE_YN
-             , CREATED_AT
-             , UPDATED_AT
-             , PASSWORD_CHANGE_YN
-             , EMPLOYEE_NO
-             , GENDER_CODE
-             , BIRTH_DATE
-             , BIRTH_CALENDAR_CODE
-             , HIRE_DATE
-             , RETIREMENT_DATE
-             , EMPLOYMENT_STATUS_CODE
-             , EMPLOYMENT_TYPE_CODE
-             , DEPARTMENT_NAME
-             , POSITION_NAME
-             , JOB_TITLE
-             , WORK_LOCATION
-             , MOBILE_PHONE
-             , OFFICE_PHONE
-             , HR_NOTE
-             , PHOTO_FILE_NAME
-             , PHOTO_CONTENT_TYPE
-             , PHOTO_FILE_SIZE
-             , PHOTO_UPDATED_AT
-          FROM "INIT$_TB_USER"
-         WHERE (
-               :keyword IS NULL
-               OR UPPER(LOGIN_ID) LIKE :keyword
-               OR UPPER(USER_NAME) LIKE :keyword
-               OR UPPER(EMAIL) LIKE :keyword
-               OR UPPER(EMPLOYEE_NO) LIKE :keyword
-               OR UPPER(DEPARTMENT_NAME) LIKE :keyword
-               OR UPPER(POSITION_NAME) LIKE :keyword
-               OR UPPER(JOB_TITLE) LIKE :keyword
-              )
-           AND (:useYn = 'ALL' OR USE_YN = :useYn)
-         ORDER BY CREATED_AT DESC
-                , USER_ID DESC
+  FROM "INIT$_TB_USER"
+ WHERE 1=1
+   AND (
+        :keyword IS NULL
+        OR UPPER(LOGIN_ID) LIKE :keyword
+        OR UPPER(USER_NAME) LIKE :keyword
+        OR UPPER(EMAIL) LIKE :keyword
+        OR UPPER(EMPLOYEE_NO) LIKE :keyword
+        OR UPPER(DEPARTMENT_NAME) LIKE :keyword
+        OR UPPER(POSITION_NAME) LIKE :keyword
+        OR UPPER(JOB_TITLE) LIKE :keyword
        )
- WHERE ROWNUM <= :limit
+   AND (:useYn = 'ALL' OR USE_YN = :useYn)
+ ORDER BY CREATED_AT DESC
+        , USER_ID DESC
+ OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
 ;
 
 -- [ADMIN_USER_UPDATE]

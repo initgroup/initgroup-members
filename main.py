@@ -19,7 +19,7 @@ from backend.auth_context import (
     get_session_ttl_seconds,
     refresh_session_cookie,
 )
-from backend.database import close_db_pool
+from backend.database import close_db_pool, initialize_db_pool
 from backend.rate_limit import check_auth_rate_limit
 from backend.routers import (
     account,
@@ -44,6 +44,14 @@ PORTAL_SITE_FILE = FRONTEND_DIR / "index.html"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    try:
+        await run_in_threadpool(initialize_db_pool)
+    except Exception:
+        logger.exception(
+            "System database startup verification failed. "
+            "Check Oracle network access, DSN, Wallet, and credentials."
+        )
+        raise
     yield
     try:
         close_db_pool()
@@ -227,10 +235,15 @@ async def enforce_api_authentication(request, call_next):
                 str(session_user.get("passwordChangeYn") or "N").strip().upper() != "Y"
                 and (method, path) not in PASSWORD_CHANGE_ALLOWED_API_ROUTES
             ):
-                return JSONResponse(
+                response = JSONResponse(
                     status_code=403,
                     content={"detail": "초기 비밀번호를 먼저 변경해 주세요."},
                 )
+                refresh_session_cookie(request, response)
+                response.headers["X-INIT-Session-TTL-Seconds"] = str(
+                    get_session_ttl_seconds()
+                )
+                return response
         except Exception as exc:
             status_code = int(getattr(exc, "status_code", 401))
             detail = getattr(exc, "detail", "로그인 세션이 필요합니다.")

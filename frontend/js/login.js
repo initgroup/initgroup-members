@@ -5,9 +5,19 @@
     let root = null;
     let loginPasswordActivated = false;
     let passwordAutofillTimers = [];
+    let loginFocusFrameId = 0;
 
     function query(selector) {
         return root?.querySelector(selector) || null;
+    }
+
+    function focusLoginId() {
+        if (loginFocusFrameId) window.cancelAnimationFrame(loginFocusFrameId);
+        loginFocusFrameId = window.requestAnimationFrame(() => {
+            loginFocusFrameId = 0;
+            if (!root || root.hidden || App.requiresPasswordChange()) return;
+            query("#loginId")?.focus({ preventScroll: true });
+        });
     }
 
     function clearLoginPasswordBeforeInput() {
@@ -279,12 +289,19 @@
             });
             syncAdminKeyField();
             if (App.requiresPasswordChange()) openRequiredPasswordChange();
+            else focusLoginId();
+        },
+
+        activate() {
+            focusLoginId();
         },
 
         destroy() {
             controller?.abort();
+            if (loginFocusFrameId) window.cancelAnimationFrame(loginFocusFrameId);
             passwordAutofillTimers.forEach((timerId) => window.clearTimeout(timerId));
             passwordAutofillTimers = [];
+            loginFocusFrameId = 0;
             loginPasswordActivated = false;
             controller = null;
             root = null;

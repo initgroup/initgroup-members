@@ -16,7 +16,11 @@
     const loadedScripts = new Map();
     const registeredHtmlPages = new Set(window.PAGE_FILE_CONFIG?.htmlPages || []);
     const registeredScriptPages = new Set(window.PAGE_FILE_CONFIG?.scriptPages || []);
-    const VISITED_PAGES_STORAGE_KEY = "init-members:visited-pages";
+    const DEFAULT_PAGE_CODE = "home";
+    const PAGE_ALIASES = {
+        "project-assignments": { pageCode: "workforce-management", context: { initialMode: "confirmed" } },
+        "workforce-planning": { pageCode: "workforce-management", context: { initialMode: "planning" } }
+    };
     const HISTORY_INDEX_KEY = "initMembersHistoryIndex";
     let currentHistoryIndex = Number(window.history.state?.[HISTORY_INDEX_KEY]);
     if (!Number.isInteger(currentHistoryIndex)) currentHistoryIndex = 0;
@@ -31,31 +35,7 @@
     collectPages(window.MENU_CONFIG || []);
     pageMap.set("login", { type: "page", page: "login", label: "로그인", title: "로그인", public: true });
 
-    function loadVisitedPages() {
-        try {
-            const stored = JSON.parse(window.sessionStorage.getItem(VISITED_PAGES_STORAGE_KEY) || "[]");
-            return new Set(
-                Array.isArray(stored)
-                    ? stored.filter((pageCode) => pageMap.has(String(pageCode)))
-                    : []
-            );
-        } catch (_error) {
-            return new Set();
-        }
-    }
-
-    const visitedPages = loadVisitedPages();
-
-    function saveVisitedPages() {
-        try {
-            window.sessionStorage.setItem(
-                VISITED_PAGES_STORAGE_KEY,
-                JSON.stringify(Array.from(visitedPages))
-            );
-        } catch (_error) {
-            // Visited state is cosmetic and must not block navigation.
-        }
-    }
+    const visitedPages = new Set();
 
     function homepageSkinTemplates() {
         return Array.isArray(window.APP_SKIN_TEMPLATES) ? window.APP_SKIN_TEMPLATES : [];
@@ -271,11 +251,13 @@
 
     function markPageVisited(pageCode) {
         if (!pageMap.has(pageCode) || pageCode === "login") return;
-        if (!visitedPages.has(pageCode)) {
-            visitedPages.add(pageCode);
-            saveVisitedPages();
-        }
+        visitedPages.add(pageCode);
         updateNavigationState(pageCode);
+    }
+
+    function unmarkPageVisited(pageCode) {
+        visitedPages.delete(pageCode);
+        updateNavigationState(PageManager.current?.pageCode || "");
     }
 
     function updateShell(pageCode) {
@@ -303,19 +285,35 @@
 
     function loadPageScript(pageCode) {
         if (window.Pages[pageCode]) return Promise.resolve(window.Pages[pageCode]);
-        if (loadedScripts.has(pageCode)) return loadedScripts.get(pageCode);
+        if (loadedScripts.has(pageCode)) return loadedScripts.get(pageCode).promise;
 
-        const promise = new Promise((resolve, reject) => {
+        const record = {
+            module: null,
+            promise: null,
+            script: null
+        };
+        record.promise = new Promise((resolve, reject) => {
             const script = document.createElement("script");
+            record.script = script;
             script.src = `./js/${encodeURIComponent(pageCode)}.js`;
             script.async = true;
             script.dataset.pageScript = pageCode;
             script.addEventListener("load", () => {
+                const currentRecord = loadedScripts.get(pageCode);
+                if (currentRecord !== record) {
+                    if (currentRecord?.module) window.Pages[pageCode] = currentRecord.module;
+                    else delete window.Pages[pageCode];
+                    const staleLoadError = new Error(`${pageCode} 화면 로드가 취소되었습니다.`);
+                    staleLoadError.name = "AbortError";
+                    reject(staleLoadError);
+                    return;
+                }
                 const pageModule = window.Pages[pageCode];
                 if (!pageModule) {
                     reject(new Error(`${pageCode} 화면 모듈이 등록되지 않았습니다.`));
                     return;
                 }
+                record.module = pageModule;
                 resolve(pageModule);
             }, { once: true });
             script.addEventListener("error", () => {
@@ -323,12 +321,30 @@
             }, { once: true });
             document.head.appendChild(script);
         }).catch((error) => {
-            loadedScripts.delete(pageCode);
+            if (loadedScripts.get(pageCode) === record) {
+                loadedScripts.delete(pageCode);
+                record.script?.remove();
+                PageManager.updateControls();
+            }
             throw error;
         });
 
-        loadedScripts.set(pageCode, promise);
-        return promise;
+        loadedScripts.set(pageCode, record);
+        PageManager.updateControls();
+        return record.promise;
+    }
+
+    function releasePageScript(pageCode, expectedModule = null) {
+        const record = loadedScripts.get(pageCode);
+        record?.script?.remove();
+        loadedScripts.delete(pageCode);
+        document.querySelectorAll("script[data-page-script]").forEach((script) => {
+            if (script.dataset.pageScript === pageCode) script.remove();
+        });
+        if (!expectedModule || window.Pages[pageCode] === expectedModule) {
+            delete window.Pages[pageCode];
+        }
+        PageManager.updateControls();
     }
 
     async function loadPageHtml(pageCode, signal) {
@@ -342,57 +358,120 @@
         return response.text();
     }
 
+    // A page is initialized once, deactivated while cached, activated when restored,
+    // and destroyed only when it is explicitly closed or the workspace is cleared.
     const PageManager = {
         current: null,
         pages: new Map(),
         requestId: 0,
         controller: null,
+        activationSequence: 0,
 
-        async destroyPage(pageCode) {
+        updateControls() {
+            const currentCloseButton = document.getElementById("closeCurrentPageButton");
+            const allCloseButton = document.getElementById("closeAllPagesButton");
+            const openPageCount = Array.from(new Set([
+                ...this.pages.keys(),
+                ...loadedScripts.keys()
+            ])).filter((pageCode) => pageCode !== "login" && pageCode !== DEFAULT_PAGE_CODE).length;
+            if (currentCloseButton) {
+                const canCloseCurrent = Boolean(
+                    this.current
+                    && this.current.pageCode !== "login"
+                    && this.current.pageCode !== DEFAULT_PAGE_CODE
+                );
+                currentCloseButton.disabled = !canCloseCurrent;
+                currentCloseButton.setAttribute(
+                    "aria-label",
+                    canCloseCurrent ? `${getPage(this.current.pageCode)?.title || "현재"} 페이지 닫기` : "현재 페이지 닫기"
+                );
+            }
+            if (allCloseButton) {
+                allCloseButton.disabled = openPageCount === 0;
+                allCloseButton.setAttribute("aria-label", `전체 페이지 닫기 · ${openPageCount}개 열림`);
+            }
+        },
+
+        lifecycleContext(entry, extra = {}) {
+            return {
+                root: entry.root,
+                user: state.user,
+                navigate: App.navigate,
+                refreshSession: App.refreshSession,
+                ...extra
+            };
+        },
+
+        async destroyPage(pageCode, options = {}) {
             const entry = this.pages.get(pageCode);
             if (!entry) return;
+            if (this.current === entry && entry.active) {
+                await this.hideCurrent("", { closing: true, reason: options.reason || "page close" });
+            }
             if (this.current === entry) this.current = null;
             try {
-                if (typeof entry.module.destroy === "function") await entry.module.destroy();
+                entry.clientTablePagers?.forEach((pager) => pager.destroy());
+                entry.clientTablePagers = [];
+                if (typeof entry.module.destroy === "function") {
+                    await entry.module.destroy(this.lifecycleContext(entry, {
+                        closing: true,
+                        reason: options.reason || "page close"
+                    }));
+                }
             } catch (error) {
                 console.warn("[PageManager] 화면 정리 중 오류가 발생했습니다.", error);
             } finally {
+                entry.root.replaceChildren();
                 entry.root.remove();
                 this.pages.delete(pageCode);
+                releasePageScript(pageCode, entry.module);
+                unmarkPageVisited(pageCode);
+                this.updateControls();
             }
         },
 
-        async releasePrevious(entry, nextPageCode) {
-            if (
-                !entry
-                || entry.pageCode === nextPageCode
-                || getPage(entry.pageCode)?.keepAlive === true
-            ) {
-                return;
-            }
-            await this.destroyPage(entry.pageCode);
-        },
-
-        async clear() {
+        async clear(options = {}) {
             this.requestId += 1;
             this.controller?.abort();
             this.controller = null;
             const pageCodes = Array.from(this.pages.keys());
-            for (const pageCode of pageCodes) await this.destroyPage(pageCode);
+            for (const pageCode of pageCodes) {
+                await this.destroyPage(pageCode, { reason: options.reason || "workspace clear" });
+            }
+            Array.from(loadedScripts.keys()).forEach((pageCode) => releasePageScript(pageCode));
+            document.querySelectorAll("script[data-page-script]").forEach((script) => script.remove());
             document.getElementById("pageHost")?.replaceChildren();
+            this.current = null;
+            this.updateControls();
         },
 
-        hideCurrent(nextPageCode) {
+        async hideCurrent(nextPageCode, options = {}) {
             if (!this.current || this.current.pageCode === nextPageCode) return;
-            this.current.scrollY = window.scrollY;
-            this.current.root.hidden = true;
-            this.current.root.setAttribute("aria-hidden", "true");
+            const entry = this.current;
+            entry.scrollY = window.scrollY;
+            try {
+                if (typeof entry.module.deactivate === "function") {
+                    await entry.module.deactivate(this.lifecycleContext(entry, {
+                        nextPageCode,
+                        closing: options.closing === true,
+                        reason: options.reason || "page switch"
+                    }));
+                }
+            } catch (error) {
+                console.warn("[PageManager] 화면 비활성화 중 오류가 발생했습니다.", error);
+            }
+            entry.root.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+            entry.root.hidden = true;
+            entry.root.setAttribute("aria-hidden", "true");
+            entry.active = false;
         },
 
-        show(entry, options = {}) {
-            this.hideCurrent(entry.pageCode);
+        async show(entry, options = {}) {
+            await this.hideCurrent(entry.pageCode);
             entry.root.hidden = false;
             entry.root.removeAttribute("aria-hidden");
+            entry.active = true;
+            entry.lastActivatedOrder = ++this.activationSequence;
             this.current = entry;
 
             if (options.fromHash && Number.isInteger(options.historyIndex)) {
@@ -413,6 +492,7 @@
             if (!explicitFocusTarget) focusTarget.setAttribute?.("tabindex", "-1");
             focusTarget.focus?.({ preventScroll: true });
             window.scrollTo({ top: entry.scrollY || 0, behavior: "auto" });
+            this.updateControls();
         },
 
         async canLeaveCurrent(nextPageCode, options = {}) {
@@ -429,7 +509,9 @@
             }
             const allowed = await this.current.module.beforeLeave({
                 nextPageCode,
-                force: options.force === true
+                force: options.force === true,
+                closing: options.closing === true,
+                preservesState: options.force !== true && options.closing !== true
             });
             if (allowed === false) {
                 if (options.fromHash && Number.isInteger(options.historyIndex)) {
@@ -447,8 +529,68 @@
             return true;
         },
 
+        fallbackPageCode(excludedPageCode = "") {
+            const recentEntry = Array.from(this.pages.values())
+                .filter((entry) => entry.pageCode !== "login" && entry.pageCode !== excludedPageCode)
+                .sort((left, right) => (right.lastActivatedOrder || 0) - (left.lastActivatedOrder || 0))[0];
+            return recentEntry?.pageCode || DEFAULT_PAGE_CODE;
+        },
+
+        async closeCurrent() {
+            const entry = this.current;
+            if (!entry || entry.pageCode === "login" || entry.pageCode === DEFAULT_PAGE_CODE) return;
+            const fallbackPageCode = this.fallbackPageCode(entry.pageCode);
+            if (!(await this.canLeaveCurrent(fallbackPageCode, { force: true, closing: true }))) return;
+            this.requestId += 1;
+            this.controller?.abort();
+            this.controller = null;
+            await this.destroyPage(entry.pageCode, { reason: "close current page" });
+            await this.load(fallbackPageCode, {
+                replaceHash: true,
+                skipBeforeLeave: true
+            });
+        },
+
+        async closeAll() {
+            const pageCodes = Array.from(new Set([
+                ...this.pages.keys(),
+                ...loadedScripts.keys()
+            ])).filter((pageCode) => pageCode !== "login" && pageCode !== DEFAULT_PAGE_CODE);
+            if (!pageCodes.length) return;
+            const confirmed = await Common.ui.confirm(
+                `열려 있는 ${pageCodes.length}개 페이지를 모두 닫으시겠습니까? 저장하지 않은 화면 상태는 사라집니다.`,
+                { title: "전체 페이지 닫기", confirmText: "전체 닫기", danger: true }
+            );
+            if (!confirmed) return;
+            this.requestId += 1;
+            this.controller?.abort();
+            this.controller = null;
+            for (const pageCode of pageCodes) {
+                if (this.pages.has(pageCode)) {
+                    await this.destroyPage(pageCode, { reason: "close all pages" });
+                } else {
+                    releasePageScript(pageCode);
+                }
+            }
+            await this.load(DEFAULT_PAGE_CODE, {
+                replaceHash: true,
+                skipBeforeLeave: true
+            });
+        },
+
         async load(requestedPageCode, options = {}) {
             let pageCode = String(requestedPageCode || "").trim();
+            const alias = PAGE_ALIASES[pageCode];
+            if (alias) {
+                pageCode = alias.pageCode;
+                options = {
+                    ...options,
+                    context: {
+                        ...alias.context,
+                        ...(options.context || {})
+                    }
+                };
+            }
             let page = getPage(pageCode);
 
             if (!state.user && pageCode !== "login") {
@@ -494,20 +636,15 @@
 
             const requestId = ++this.requestId;
             this.controller?.abort();
-            const previousEntry = this.current;
             const cached = !options.force ? this.pages.get(pageCode) : null;
             if (cached) {
                 this.controller = null;
-                this.show(cached, options);
+                await this.show(cached, options);
                 if (typeof cached.module.activate === "function") {
                     try {
-                        await cached.module.activate({
-                            root: cached.root,
-                            user: state.user,
-                            navigate: App.navigate,
-                            refreshSession: App.refreshSession,
+                        await cached.module.activate(this.lifecycleContext(cached, {
                             routeContext: options.context || null
-                        });
+                        }));
                     } catch (error) {
                         if (requestId !== this.requestId || this.current !== cached) return;
                         console.error("[PageManager] 화면 재활성화 실패", error);
@@ -515,8 +652,11 @@
                     }
                 }
                 if (requestId !== this.requestId || this.current !== cached) return;
-                await this.releasePrevious(previousEntry, pageCode);
                 return;
+            }
+
+            if (options.force && this.pages.has(pageCode)) {
+                await this.destroyPage(pageCode, { reason: "page refresh" });
             }
 
             this.controller = new AbortController();
@@ -530,7 +670,6 @@
                 ]);
                 if (requestId !== this.requestId) return;
 
-                if (options.force) await this.destroyPage(pageCode);
                 if (pageCode !== "login") await this.destroyPage("login");
                 if (requestId !== this.requestId) return;
 
@@ -541,23 +680,31 @@
                 if (!root) throw new Error(`${pageCode} 화면의 루트 요소를 찾을 수 없습니다.`);
                 root.hidden = true;
                 host.appendChild(root);
-                createdEntry = { pageCode, module: pageModule, root, scrollY: 0 };
+                createdEntry = {
+                    pageCode,
+                    module: pageModule,
+                    root,
+                    scrollY: 0,
+                    active: false,
+                    lastActivatedOrder: 0
+                };
                 this.pages.set(pageCode, createdEntry);
-                this.show(createdEntry, options);
+                await this.show(createdEntry, options);
 
                 if (typeof pageModule.init === "function") {
-                    await pageModule.init({
-                        root,
-                        user: state.user,
-                        navigate: App.navigate,
-                        refreshSession: App.refreshSession,
+                    await pageModule.init(this.lifecycleContext(createdEntry, {
                         routeContext: options.context || null
-                    });
+                    }));
                 }
-                if (requestId !== this.requestId) return;
+                createdEntry.clientTablePagers = Common.grid.enhanceClientTables(createdEntry.root, {
+                    pageSize: 100
+                });
+                if (requestId !== this.requestId) {
+                    await this.destroyPage(createdEntry.pageCode, { reason: "stale page load" });
+                    return;
+                }
 
-                this.show(createdEntry, options);
-                await this.releasePrevious(previousEntry, pageCode);
+                await this.show(createdEntry, options);
             } catch (error) {
                 if (error?.name === "AbortError") return;
                 if (createdEntry) await this.destroyPage(createdEntry.pageCode);
@@ -599,7 +746,7 @@
     }
 
     async function logout() {
-        if (!(await PageManager.canLeaveCurrent("login"))) return;
+        if (!(await PageManager.canLeaveCurrent("login", { closing: true, destructive: true }))) return;
         try {
             await Common.api.request("/auth/logout", {
                 method: "POST",
@@ -614,7 +761,7 @@
 
         state.user = null;
         renderNavigation();
-        await PageManager.clear();
+        await PageManager.clear({ reason: "logout" });
         await PageManager.load("login", { replaceHash: true });
         Common.ui.toast("로그아웃했습니다.", "success");
     }
@@ -625,6 +772,12 @@
         },
         refreshPage() {
             return PageManager.refresh();
+        },
+        closeCurrentPage() {
+            return PageManager.closeCurrent();
+        },
+        closeAllPages() {
+            return PageManager.closeAll();
         },
         refreshSession,
         logout,
@@ -667,7 +820,7 @@
             state.user = null;
             renderNavigation();
             Common.ui.toast("로그인 세션이 만료되었습니다. 다시 로그인해 주세요.", "warning");
-            await PageManager.clear();
+            await PageManager.clear({ reason: "session expired" });
             await PageManager.load("login", { replaceHash: true });
         } finally {
             state.handlingUnauthorized = false;
@@ -681,6 +834,8 @@
         document.getElementById("sidebarBackdrop")?.addEventListener("click", () => setSidebarOpen(false));
         document.getElementById("sidebarClose")?.addEventListener("click", () => setSidebarOpen(false));
         document.getElementById("refreshPageButton")?.addEventListener("click", () => App.refreshPage());
+        document.getElementById("closeCurrentPageButton")?.addEventListener("click", () => App.closeCurrentPage());
+        document.getElementById("closeAllPagesButton")?.addEventListener("click", () => App.closeAllPages());
         document.getElementById("logoutButton")?.addEventListener("click", () => App.logout());
 
         window.addEventListener("popstate", (event) => {

@@ -305,24 +305,42 @@ def create_user(payload: UserCreateRequest):
 def list_users(
     keyword: str = Query("", max_length=200),
     useYn: str = Query("ALL"),
-    limit: int = Query(100, ge=1, le=500),
+    page: int = Query(1, ge=1, le=100_000),
+    pageSize: int = Query(100, ge=1, le=100),
 ):
     normalized_keyword = keyword.strip().upper()
+    filters = {
+        "keyword": f"%{normalized_keyword}%" if normalized_keyword else None,
+        "useYn": _normalize_use_yn(useYn, allow_all=True),
+    }
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute(SqlLoader.get_sql("ADMIN_USER_COUNT"), filters)
+        total = int(cursor.fetchone()[0] or 0)
         cursor.execute(
             SqlLoader.get_sql("ADMIN_USER_LIST"),
             {
-                "keyword": f"%{normalized_keyword}%" if normalized_keyword else None,
-                "useYn": _normalize_use_yn(useYn, allow_all=True),
-                "limit": limit,
+                **filters,
+                "offset": (page - 1) * pageSize,
+                "pageSize": pageSize,
             },
         )
-        data = _rows(cursor)
-        return {"status": "success", "data": data, "total": len(data)}
+        items = _rows(cursor)
+        total_pages = max(1, (total + pageSize - 1) // pageSize)
+        return {
+            "status": "success",
+            "data": {
+                "items": items,
+                "page": page,
+                "pageSize": pageSize,
+                "total": total,
+                "totalPages": total_pages,
+            },
+            "total": total,
+        }
     finally:
         if cursor:
             cursor.close()

@@ -9,6 +9,9 @@
     let selectedUserId = null;
     let pendingPasswordResetUserId = null;
     let localPhotoUrl = null;
+    let userPage = 1;
+    let userTotal = 0;
+    let userTotalPages = 1;
     const EMPLOYMENT_STATUS_LABELS = { ACTIVE: "재직", LEAVE: "휴직", RETIRED: "퇴직" };
 
     function query(selector) {
@@ -181,32 +184,84 @@
         updateSelectedRow();
     }
 
-    async function loadUsers() {
+    function userPageButton(label, page, options = {}) {
+        return Common.dom.element("button", {
+            className: `grid-page-button${options.current ? " is-current" : ""}`,
+            text: label,
+            type: "button",
+            attrs: {
+                "data-user-page": page,
+                "aria-label": options.ariaLabel,
+                "aria-current": options.current ? "page" : null,
+                disabled: options.disabled ? "" : null
+            }
+        });
+    }
+
+    function renderUserPagination() {
+        const pagination = query("#userPagination");
+        Common.dom.clear(pagination);
+        pagination.append(
+            userPageButton("처음", 1, { disabled: userPage <= 1, ariaLabel: "첫 페이지" }),
+            userPageButton("이전", userPage - 1, { disabled: userPage <= 1, ariaLabel: "이전 페이지" })
+        );
+        const start = Math.max(1, Math.min(userPage - 2, userTotalPages - 4));
+        const end = Math.min(userTotalPages, start + 4);
+        for (let number = start; number <= end; number += 1) {
+            pagination.appendChild(userPageButton(String(number), number, {
+                current: number === userPage,
+                ariaLabel: `${number} 페이지`
+            }));
+        }
+        pagination.append(
+            userPageButton("다음", userPage + 1, { disabled: userPage >= userTotalPages, ariaLabel: "다음 페이지" }),
+            userPageButton("마지막", userTotalPages, { disabled: userPage >= userTotalPages, ariaLabel: "마지막 페이지" })
+        );
+    }
+
+    async function loadUsers(options = {}) {
+        if (options.resetPage) userPage = 1;
         const status = query("#userListStatus");
         Common.ui.setInlineStatus(status, "임직원 목록을 불러오고 있습니다.");
         try {
             const queryString = Common.api.query({
                 keyword: query("#userKeyword").value.trim(),
                 useYn: query("#userUseYn").value,
-                limit: query("#userLimit").value
+                page: userPage,
+                pageSize: query("#userLimit").value
             });
             const payload = await Common.api.request(`/admin/users${queryString}`, {
                 method: "GET",
                 signal: controller.signal,
                 showLoading: false
             });
+            const data = Common.data.get(payload) || {};
             users = Common.data.rows(payload, "users", "items", "rows");
+            userPage = Number(data.page || userPage);
+            userTotal = Number(data.total ?? payload?.total ?? users.length);
+            userTotalPages = Math.max(1, Number(data.totalPages || Math.ceil(userTotal / 100) || 1));
+            if (!users.length && userTotal > 0 && userPage > userTotalPages) {
+                userPage = userTotalPages;
+                await loadUsers();
+                return;
+            }
             renderUsers();
+            renderUserPagination();
             if (selectedUserId) {
                 const selectedUser = users.find((row) => String(userId(row)) === selectedUserId);
                 if (selectedUser) fillUserForm(selectedUser);
                 else fillUserForm();
             }
-            Common.ui.setInlineStatus(status, `${users.length.toLocaleString("ko-KR")}명의 임직원을 조회했습니다.`);
+            const start = userTotal ? ((userPage - 1) * 100) + 1 : 0;
+            const end = userTotal ? start + users.length - 1 : 0;
+            Common.ui.setInlineStatus(status, `총 ${userTotal.toLocaleString("ko-KR")}명 중 ${start.toLocaleString("ko-KR")}-${end.toLocaleString("ko-KR")}명`);
         } catch (error) {
             if (error?.name === "AbortError") return;
             users = [];
+            userTotal = 0;
+            userTotalPages = 1;
             renderUsers();
+            renderUserPagination();
             Common.ui.setInlineStatus(status, error.message || "임직원 목록을 불러오지 못했습니다.", "error");
         }
     }
@@ -467,6 +522,14 @@
             controller = new AbortController();
             query("#userSearchForm")?.addEventListener("submit", (event) => {
                 event.preventDefault();
+                loadUsers({ resetPage: true });
+            }, { signal: controller.signal });
+            query("#userPagination")?.addEventListener("click", (event) => {
+                const button = event.target.closest("button[data-user-page]");
+                if (!button || button.disabled) return;
+                const nextPage = Number(button.dataset.userPage);
+                if (!Number.isInteger(nextPage) || nextPage < 1 || nextPage > userTotalPages || nextPage === userPage) return;
+                userPage = nextPage;
                 loadUsers();
             }, { signal: controller.signal });
             query("#userTableBody")?.addEventListener("click", (event) => {
@@ -561,6 +624,9 @@
             reloadUsersAfterTemporaryDialog = false;
             selectedUserId = null;
             pendingPasswordResetUserId = null;
+            userPage = 1;
+            userTotal = 0;
+            userTotalPages = 1;
             clearLocalPhotoUrl();
         }
     };

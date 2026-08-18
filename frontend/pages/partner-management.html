@@ -1,7 +1,6 @@
 <section class="page" id="page-partner-management" aria-labelledby="partnerManagementTitle">
     <header class="page-header">
         <div><h2 id="partnerManagementTitle">협력업체 관리</h2><p>협력업체 회사정보와 프로젝트에 투입할 소속 직원을 함께 관리합니다.</p></div>
-        <div class="page-actions"><button id="newPartnerButton" class="button button-primary" type="button">새 협력업체</button></div>
     </header>
 
     <section class="panel" aria-labelledby="partnerListTitle">
@@ -9,6 +8,8 @@
         <div class="table-wrap"><table class="data-table company-management-table"><thead><tr><th>회사명</th><th>사업자번호</th><th>대표자</th><th>연락처</th><th>사용</th></tr></thead><tbody id="partnerTableBody"></tbody></table></div>
         <p id="partnerListStatus" class="inline-status" aria-live="polite"></p>
     </section>
+
+    <div class="list-editor-action-bar"><button id="newPartnerButton" class="button button-primary" type="button">새 협력업체</button></div>
 
     <section class="panel" aria-labelledby="partnerEditorTitle">
         <div class="panel-header"><div><h3 id="partnerEditorTitle">협력업체 등록</h3><p>프로젝트 참여회사 선택에 사용할 회사 기본정보입니다.</p></div></div>
@@ -34,8 +35,9 @@
     </section>
 
     <section id="partnerEmployeePanel" class="panel" aria-labelledby="partnerEmployeeTitle" hidden>
-        <div class="panel-header"><div><h3 id="partnerEmployeeTitle">협력업체 직원</h3><p id="partnerEmployeeDescription">선택한 회사의 직원을 관리합니다.</p></div><button id="newPartnerEmployeeButton" class="button button-primary" type="button">새 직원</button></div>
+        <div class="panel-header"><div><h3 id="partnerEmployeeTitle">협력업체 직원</h3><p id="partnerEmployeeDescription">선택한 회사의 직원을 관리합니다.</p></div></div>
         <div class="table-wrap"><table class="data-table company-employee-table"><thead><tr><th>직원명</th><th>사번</th><th>부서</th><th>직급/직책</th><th>연락처</th><th>재직</th></tr></thead><tbody id="partnerEmployeeTableBody"></tbody></table></div>
+        <div class="list-editor-action-bar"><button id="newPartnerEmployeeButton" class="button button-primary" type="button">새 직원</button></div>
         <form id="partnerEmployeeForm" class="company-employee-form">
             <input id="partnerEmployeeId" type="hidden">
             <div class="form-grid company-form-grid">

@@ -48,6 +48,8 @@ class PlanningAssignmentRequest(BaseModel):
     assignmentEndDate: date
     costUnitPrice: str = Field(default="0", pattern=_MONEY_PATTERN)
     salesUnitPrice: str = Field(default="0", pattern=_MONEY_PATTERN)
+    projectRoleName: str = Field(default="", max_length=100)
+    primaryDuty: str = Field(default="", max_length=1000)
     monthlyAllocations: list[PlanningMonthRequest] = Field(
         default_factory=list,
         min_length=1,
@@ -738,15 +740,6 @@ def _validated_plan(
                     status_code=400,
                     detail="인력 투입 종료일은 시작일보다 빠를 수 없습니다.",
                 )
-            if (
-                assignment.assignmentStartDate < project.plannedStartDate
-                or assignment.assignmentEndDate > project.plannedEndDate
-            ):
-                raise HTTPException(
-                    status_code=400,
-                    detail="인력 투입기간은 프로젝트 예상기간 안에서 설정해 주세요.",
-                )
-
             months: list[dict[str, Any]] = []
             seen_months: set[str] = set()
             total_mm = Decimal("0")
@@ -823,6 +816,8 @@ def _validated_plan(
                     "totalSalesAmount": total_sales,
                     "operatingProfit": total_sales - total_cost,
                     "sortOrder": assignment_index,
+                    "projectRoleName": assignment.projectRoleName.strip() or None,
+                    "primaryDuty": assignment.primaryDuty.strip() or None,
                     "note": assignment.note.strip() or None,
                     "months": months,
                 }

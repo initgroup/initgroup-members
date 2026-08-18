@@ -4,12 +4,9 @@
             <h2 id="adminNoticesTitle">공지사항 관리</h2>
             <p>홈에 게시할 공지사항을 작성하고 게시 상태를 관리합니다.</p>
         </div>
-        <div class="page-actions">
-            <button id="newNoticeButton" class="button button-primary" type="button">새 공지</button>
-        </div>
     </header>
 
-    <div class="split-layout">
+    <div class="list-editor-stack">
         <aside class="panel" aria-labelledby="noticeListTitle">
             <div class="panel-header">
                 <div>
@@ -35,6 +32,10 @@
             <p id="noticeListStatus" class="inline-status" aria-live="polite"></p>
             <div id="noticeSelectionList" class="selection-list"></div>
         </aside>
+
+        <div class="list-editor-action-bar">
+            <button id="newNoticeButton" class="button button-primary" type="button">새 공지</button>
+        </div>
 
         <section class="panel" aria-labelledby="noticeEditorTitle">
             <div class="panel-header">

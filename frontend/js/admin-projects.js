@@ -20,6 +20,9 @@
     let controller = null;
     let grid = null;
     let detailRequestId = 0;
+    let projectViewMode = "list";
+    let masterCompanies = [];
+    let projectCompanies = [];
 
     function query(selector) {
         return root?.querySelector(selector) || null;
@@ -36,6 +39,14 @@
     function setValue(selector, nextValue) {
         const element = query(selector);
         if (element) element.value = nextValue ?? "";
+    }
+
+    function setDefaultProjectPeriodYearFilters({ force = false } = {}) {
+        const currentYear = String(new Date().getFullYear());
+        ["#projectPeriodYearFromFilter", "#projectPeriodYearToFilter"].forEach((selector) => {
+            const input = query(selector);
+            if (input && (force || !input.value)) input.value = currentYear;
+        });
     }
 
     function dateValue(nextValue) {
@@ -56,8 +67,110 @@
         return amount;
     }
 
-    function cell(text = "", className = "") {
-        return Common.dom.element("td", { text: text ?? "", className });
+    function projectFact(label, text, className = "") {
+        const fact = Common.dom.element("div", {
+            className: `project-card-fact${className ? ` ${className}` : ""}`
+        });
+        fact.append(
+            Common.dom.element("dt", { text: label }),
+            Common.dom.element("dd", { text: text ?? "-" })
+        );
+        return fact;
+    }
+
+    function companyTypeLabel(company) {
+        return String(value(company, "companyTypeCode", "COMPANY_TYPE_CODE") || "").toUpperCase() === "HEADQUARTERS"
+            ? "본사"
+            : "협력업체";
+    }
+
+    function populateCompanyOptions() {
+        const select = query("#adminProjectCompanyMaster");
+        if (!select) return;
+        select.replaceChildren(Common.dom.element("option", { value: "", text: "회사 선택" }));
+        masterCompanies.forEach((company) => select.appendChild(Common.dom.element("option", {
+            value: value(company, "companyId", "COMPANY_ID"),
+            text: `${companyTypeLabel(company)} · ${value(company, "companyName", "COMPANY_NAME") || "회사명 미정"}`
+        })));
+    }
+
+    function clearProjectCompanyForm() {
+        query("#adminProjectCompanyForm")?.reset();
+        setValue("#adminProjectCompanyId", "");
+        setValue("#adminProjectCompanyType", "LEAD");
+        setValue("#adminProjectCompanyShareRate", 0);
+        query("#adminProjectCompanyForm").dataset.versionToken = "";
+        query("#deleteAdminProjectCompanyButton").hidden = true;
+        Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), "");
+    }
+
+    function fillProjectCompanyForm(company) {
+        setValue("#adminProjectCompanyId", value(company, "projectCompanyId", "PROJECT_COMPANY_ID"));
+        setValue("#adminProjectCompanyMaster", value(company, "companyId", "COMPANY_ID"));
+        setValue("#adminProjectCompanyType", value(company, "participationTypeCode", "PARTICIPATION_TYPE_CODE") || "LEAD");
+        setValue("#adminProjectCompanyShareRate", value(company, "shareRate", "SHARE_RATE") ?? 0);
+        setValue("#adminProjectCompanyNote", value(company, "note", "NOTE") || "");
+        query("#adminProjectCompanyForm").dataset.versionToken = value(company, "versionToken", "VERSION_TOKEN") || "";
+        query("#deleteAdminProjectCompanyButton").hidden = false;
+        Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), `${value(company, "companyName", "COMPANY_NAME") || "참여회사"} 정보를 수정하고 있습니다.`);
+    }
+
+    function renderProjectCompanies() {
+        const body = query("#adminProjectCompanyTableBody");
+        body.replaceChildren();
+        if (!projectCompanies.length) {
+            const row = Common.dom.element("tr");
+            const empty = Common.dom.element("td", { text: "등록된 참여회사가 없습니다. 아래에서 인아이티(본사) 또는 해당 협력업체를 등록해 주세요." });
+            empty.colSpan = 5;
+            empty.className = "grid-empty-cell";
+            row.appendChild(empty);
+            body.appendChild(row);
+            return;
+        }
+        projectCompanies.forEach((company) => {
+            const row = Common.dom.element("tr", {
+                attrs: {
+                    tabindex: "0",
+                    "data-project-company-id": value(company, "projectCompanyId", "PROJECT_COMPANY_ID")
+                }
+            });
+            const master = masterCompanies.find((item) => String(value(item, "companyId", "COMPANY_ID")) === String(value(company, "companyId", "COMPANY_ID")));
+            [
+                value(company, "companyName", "COMPANY_NAME") || "회사명 미정",
+                companyTypeLabel(master || company),
+                PARTICIPATION_LABELS[value(company, "participationTypeCode", "PARTICIPATION_TYPE_CODE")] || "-",
+                `${value(company, "shareRate", "SHARE_RATE") ?? 0}%`,
+                value(company, "note", "NOTE") || "-"
+            ].forEach((text) => row.appendChild(Common.dom.element("td", { text })));
+            body.appendChild(row);
+        });
+    }
+
+    async function loadProjectCompanies(id) {
+        const panel = query("#projectCompanyEditorPanel");
+        panel.hidden = !id;
+        projectCompanies = [];
+        clearProjectCompanyForm();
+        if (!id) {
+            renderProjectCompanies();
+            return;
+        }
+        Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), "참여회사 정보를 불러오고 있습니다.");
+        try {
+            const payload = await Common.api.request(`/project-assignments?projectId=${encodeURIComponent(id)}`, {
+                signal: controller.signal,
+                showLoading: false
+            });
+            projectCompanies = Common.data.get(payload)?.companies || [];
+            renderProjectCompanies();
+            Common.ui.setInlineStatus(
+                query("#adminProjectCompanyStatus"),
+                projectCompanies.length ? `${projectCompanies.length}개의 참여회사가 등록되어 있습니다.` : "투입인력을 배치하려면 참여회사를 먼저 등록해 주세요.",
+                projectCompanies.length ? "success" : "warning"
+            );
+        } catch (error) {
+            Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), error.message || "참여회사 정보를 불러오지 못했습니다.", "error");
+        }
     }
 
     function renderProjectRow(project) {
@@ -65,36 +178,77 @@
         const participationType = String(
             value(project, "participationTypeCode", "PARTICIPATION_TYPE_CODE") || ""
         );
-        const row = Common.dom.element("tr");
-        const nameCell = cell("", "project-name-cell");
-        nameCell.appendChild(Common.dom.element("strong", {
-            text: value(project, "projectName", "PROJECT_NAME") || "이름 없음"
-        }));
-        const statusCell = cell();
-        statusCell.appendChild(Common.dom.element("span", {
-            className: `project-status-badge is-${statusCode.toLowerCase().replaceAll("_", "-")}`,
-            text: STATUS_LABELS[statusCode] || statusCode
-        }));
+        const item = Common.dom.element("article", { className: "project-card" });
+        item.setAttribute("role", "option");
 
-        row.append(
-            cell(value(project, "projectYear", "PROJECT_YEAR") || "-"),
-            nameCell,
-            cell(value(project, "customerName", "CUSTOMER_NAME") || "-"),
-            statusCell,
-            cell(`${formatDate(value(project, "projectStartDate", "PROJECT_START_DATE"))} ~ ${formatDate(value(project, "projectEndDate", "PROJECT_END_DATE"))}`),
-            cell(formatAmount(value(project, "orderAmountVat", "ORDER_AMOUNT_VAT")), "number-column"),
-            cell(formatAmount(value(project, "contractAmountVat", "CONTRACT_AMOUNT_VAT")), "number-column"),
-            cell(PARTICIPATION_LABELS[participationType] || participationType || "-"),
-            cell(`${value(project, "participationRate", "PARTICIPATION_RATE") ?? 0}%`, "number-column"),
-            cell(formatDate(value(project, "orderDate", "ORDER_DATE"))),
-            cell(formatDate(value(project, "bidDate", "BID_DATE")))
+        const heading = Common.dom.element("header", { className: "project-card-heading" });
+        const badges = Common.dom.element("div", { className: "project-card-badges" });
+        badges.append(
+            Common.dom.element("span", {
+                className: `project-status-badge is-${statusCode.toLowerCase().replaceAll("_", "-")}`,
+                text: STATUS_LABELS[statusCode] || statusCode
+            }),
+            Common.dom.element("span", {
+                className: "project-year-badge",
+                text: `등록 ${value(project, "projectYear", "PROJECT_YEAR") || "-"}년`
+            })
         );
-        return row;
+        heading.append(
+            badges,
+            Common.dom.element("h4", {
+                className: "project-card-title",
+                text: value(project, "projectName", "PROJECT_NAME") || "이름 없음"
+            }),
+            Common.dom.element("p", {
+                text: `${value(project, "customerName", "CUSTOMER_NAME") || "발주처 미등록"} · ${PARTICIPATION_LABELS[participationType] || participationType || "참여유형 미등록"}`
+            })
+        );
+
+        const facts = Common.dom.element("dl", { className: "project-card-facts" });
+        facts.append(
+            projectFact(
+                "프로젝트 기간",
+                `${formatDate(value(project, "projectStartDate", "PROJECT_START_DATE"))} ~ ${formatDate(value(project, "projectEndDate", "PROJECT_END_DATE"))}`,
+                "project-card-period"
+            ),
+            projectFact("발주금액", formatAmount(value(project, "orderAmountVat", "ORDER_AMOUNT_VAT")), "project-card-amount"),
+            projectFact("수주금액", formatAmount(value(project, "contractAmountVat", "CONTRACT_AMOUNT_VAT")), "project-card-amount"),
+            projectFact("참여비중", `${value(project, "participationRate", "PARTICIPATION_RATE") ?? 0}%`),
+            projectFact("발주일", formatDate(value(project, "orderDate", "ORDER_DATE"))),
+            projectFact("입찰일", formatDate(value(project, "bidDate", "BID_DATE")))
+        );
+
+        const action = Common.dom.element("span", {
+            className: "project-card-action",
+            text: "상세 보기"
+        });
+        action.setAttribute("aria-hidden", "true");
+        item.append(heading, facts, action);
+        return item;
+    }
+
+    function setProjectView(mode) {
+        projectViewMode = mode === "list" ? "list" : "panel";
+        const collection = query("#projectCollection");
+        collection?.classList.toggle("is-panel-view", projectViewMode === "panel");
+        collection?.classList.toggle("is-list-view", projectViewMode === "list");
+        root?.querySelectorAll("[data-project-view]").forEach((button) => {
+            const active = button.dataset.projectView === projectViewMode;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+    }
+
+    function changeProjectSort() {
+        const selected = String(query("#projectSortSelect")?.value || "projectStartDate:desc");
+        const [sortBy, sortDirection] = selected.split(":");
+        grid?.setSort(sortBy, sortDirection);
     }
 
     function searchParameters() {
         return {
-            projectYear: query("#projectYearFilter").value,
+            periodYearFrom: query("#projectPeriodYearFromFilter").value,
+            periodYearTo: query("#projectPeriodYearToFilter").value,
             keyword: query("#projectKeyword").value.trim(),
             statusCode: query("#projectStatusFilter").value,
             participationTypeCode: query("#projectParticipationFilter").value,
@@ -119,6 +273,11 @@
     function validateSearch() {
         const form = query("#projectSearchForm");
         if (!form.reportValidity()) return false;
+        if (!validateRange(
+            "#projectPeriodYearFromFilter",
+            "#projectPeriodYearToFilter",
+            "프로젝트 수행연도 To는 From보다 빠를 수 없습니다."
+        )) return false;
         if (!validateRange(
             "#projectPeriodStartFilter",
             "#projectPeriodEndFilter",
@@ -224,6 +383,7 @@
         query("#projectForm")?.reset();
         grid?.clearSelection();
         fillProjectForm();
+        loadProjectCompanies("");
         if (options.focus !== false) query("#projectName")?.focus();
     }
 
@@ -240,6 +400,7 @@
             });
             if (requestId !== detailRequestId) return;
             fillProjectForm(Common.data.get(payload) || {});
+            await loadProjectCompanies(id);
             if (window.matchMedia("(max-width: 760px)").matches) {
                 query("#projectEditorPanel")?.scrollIntoView({
                     behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
@@ -326,6 +487,7 @@
             Common.ui.toast("프로젝트를 저장했습니다.", "success");
             await grid.load();
             grid.setSelectedKey(savedId);
+            await loadProjectCompanies(savedId);
         } catch (error) {
             if (error?.name !== "AbortError") {
                 Common.ui.setInlineStatus(
@@ -371,20 +533,94 @@
         }
     }
 
+    function projectCompanyPayload() {
+        return {
+            companyId: Number(query("#adminProjectCompanyMaster").value),
+            participationTypeCode: query("#adminProjectCompanyType").value,
+            shareRate: query("#adminProjectCompanyShareRate").value,
+            note: query("#adminProjectCompanyNote").value.trim(),
+            versionToken: query("#adminProjectCompanyId").value
+                ? query("#adminProjectCompanyForm").dataset.versionToken
+                : null
+        };
+    }
+
+    async function saveProjectCompany(event) {
+        event.preventDefault();
+        const projectIdValue = query("#projectId").value;
+        const form = event.currentTarget;
+        if (!projectIdValue) {
+            Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), "프로젝트를 먼저 저장해 주세요.", "warning");
+            return;
+        }
+        if (!form.reportValidity()) return;
+        const companyId = query("#adminProjectCompanyId").value;
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+            await Common.api.request(
+                `/project-assignments/${encodeURIComponent(projectIdValue)}/companies${companyId ? `/${encodeURIComponent(companyId)}` : ""}`,
+                {
+                    method: companyId ? "PUT" : "POST",
+                    body: projectCompanyPayload(),
+                    signal: controller.signal,
+                    showLoading: false
+                }
+            );
+            await loadProjectCompanies(projectIdValue);
+            Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), "참여회사를 저장했습니다. 이제 해당 회사 인력을 프로젝트에 배치할 수 있습니다.", "success");
+            Common.ui.toast("프로젝트 참여회사를 저장했습니다.", "success");
+        } catch (error) {
+            Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), error.message || "참여회사를 저장하지 못했습니다.", "error");
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function deleteProjectCompany() {
+        const projectIdValue = query("#projectId").value;
+        const companyId = query("#adminProjectCompanyId").value;
+        if (!projectIdValue || !companyId || !(await Common.ui.confirm(
+            "선택한 참여회사를 프로젝트에서 삭제하시겠습니까?",
+            { title: "참여회사 삭제", confirmText: "삭제", danger: true }
+        ))) return;
+        const button = query("#deleteAdminProjectCompanyButton");
+        button.disabled = true;
+        try {
+            await Common.api.request(
+                `/project-assignments/${encodeURIComponent(projectIdValue)}/companies/${encodeURIComponent(companyId)}?versionToken=${encodeURIComponent(query("#adminProjectCompanyForm").dataset.versionToken || "")}`,
+                { method: "DELETE", signal: controller.signal, showLoading: false }
+            );
+            await loadProjectCompanies(projectIdValue);
+            Common.ui.toast("프로젝트 참여회사를 삭제했습니다.", "success");
+        } catch (error) {
+            Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), error.message || "참여회사를 삭제하지 못했습니다.", "error");
+        } finally {
+            button.disabled = false;
+        }
+    }
+
     window.Pages = window.Pages || {};
     window.Pages[PAGE_NAME] = {
         async init(context) {
             root = context.root;
             controller = new AbortController();
+            setDefaultProjectPeriodYearFilters();
+            const referencePayload = await Common.api.request("/project-assignments/references", {
+                signal: controller.signal,
+                showLoading: false
+            });
+            masterCompanies = Common.data.get(referencePayload)?.companies || [];
+            populateCompanyOptions();
             grid = Common.grid.create({
                 root,
                 body: "#projectTableBody",
                 pagination: "#projectPagination",
                 status: "#projectListStatus",
                 pageSizeSelect: "#projectPageSize",
-                columnCount: 11,
-                pageSize: 20,
-                sortBy: "projectYear",
+                itemMode: true,
+                pageSize: 100,
+                sortBy: "projectStartDate",
                 sortDirection: "desc",
                 fetchPage: fetchProjectPage,
                 renderRow: renderProjectRow,
@@ -403,6 +639,7 @@
             }, { signal: controller.signal });
             query("#resetProjectSearchButton")?.addEventListener("click", () => {
                 query("#projectSearchForm")?.reset();
+                setDefaultProjectPeriodYearFilters({ force: true });
                 setDetailSearchExpanded(false);
                 newProject({ focus: false });
                 grid.setPageSize(query("#projectPageSize").value, { reload: false });
@@ -412,6 +649,14 @@
                 const expanded = query("#toggleProjectDetailSearchButton").getAttribute("aria-expanded") === "true";
                 setDetailSearchExpanded(!expanded);
             }, { signal: controller.signal });
+            query("#projectSortSelect")?.addEventListener("change", changeProjectSort, {
+                signal: controller.signal
+            });
+            root.querySelectorAll("[data-project-view]").forEach((button) => {
+                button.addEventListener("click", () => setProjectView(button.dataset.projectView), {
+                    signal: controller.signal
+                });
+            });
             query("#newProjectButton")?.addEventListener("click", () => newProject(), {
                 signal: controller.signal
             });
@@ -424,8 +669,24 @@
             query("#deleteProjectButton")?.addEventListener("click", deleteProject, {
                 signal: controller.signal
             });
+            query("#adminProjectCompanyForm")?.addEventListener("submit", saveProjectCompany, { signal: controller.signal });
+            query("#clearAdminProjectCompanyButton")?.addEventListener("click", clearProjectCompanyForm, { signal: controller.signal });
+            query("#deleteAdminProjectCompanyButton")?.addEventListener("click", deleteProjectCompany, { signal: controller.signal });
+            query("#adminProjectCompanyTableBody")?.addEventListener("click", (event) => {
+                const id = event.target.closest("[data-project-company-id]")?.dataset.projectCompanyId;
+                const company = projectCompanies.find((item) => String(value(item, "projectCompanyId", "PROJECT_COMPANY_ID")) === String(id));
+                if (company) fillProjectCompanyForm(company);
+            }, { signal: controller.signal });
+            query("#adminProjectCompanyTableBody")?.addEventListener("keydown", (event) => {
+                if (!["Enter", " "].includes(event.key)) return;
+                const row = event.target.closest("[data-project-company-id]");
+                if (!row) return;
+                event.preventDefault();
+                row.click();
+            }, { signal: controller.signal });
 
             newProject({ focus: false });
+            setProjectView(projectViewMode);
             await grid.load();
         },
 
@@ -434,6 +695,9 @@
             grid?.destroy();
             controller?.abort();
             grid = null;
+            projectViewMode = "list";
+            masterCompanies = [];
+            projectCompanies = [];
             controller = null;
             root = null;
         }

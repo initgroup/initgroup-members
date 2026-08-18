@@ -1,0 +1,54 @@
+<section class="page project-detail-editor-page" id="page-project-detail-editor" aria-labelledby="projectDetailEditorTitle">
+    <section class="panel" aria-labelledby="projectDetailEditorTitle">
+        <div class="panel-header">
+            <div>
+                <h3 id="projectDetailEditorTitle">프로젝트 상세 수정</h3>
+                <p>프로젝트 기본정보를 수정합니다.</p>
+            </div>
+        </div>
+        <form id="projectDetailForm">
+            <input id="projectDetailId" type="hidden">
+            <div class="form-grid project-form-grid">
+                <label class="field"><span class="required">등록연도 (참고)</span><input id="projectDetailYear" class="input" type="number" min="1900" max="2100" required></label>
+                <label class="field"><span class="required">진행상태</span><select id="projectDetailStatusCode" class="select" required><option value="PLANNED">계획</option><option value="BIDDING">입찰</option><option value="CONTRACTED">계약</option><option value="IN_PROGRESS">진행</option><option value="COMPLETED">완료</option><option value="CANCELLED">취소</option></select></label>
+                <label class="field project-name-field"><span class="required">프로젝트명</span><input id="projectDetailName" class="input" type="text" maxlength="300" required></label>
+                <label class="field"><span class="required">발주처</span><input id="projectDetailCustomerName" class="input" type="text" maxlength="200" required></label>
+                <label class="field"><span class="required">프로젝트 시작일</span><input id="projectDetailStartDate" class="input" type="date" required></label>
+                <label class="field"><span class="required">프로젝트 종료일</span><input id="projectDetailEndDate" class="input" type="date" required></label>
+                <label class="field"><span class="required">발주금액 (VAT 포함)</span><input id="projectDetailOrderAmountVat" class="input" type="number" min="0" max="999999999999999999" step="1" required></label>
+                <label class="field"><span class="required">수주금액 (VAT 포함)</span><input id="projectDetailContractAmountVat" class="input" type="number" min="0" max="999999999999999999" step="1" required></label>
+                <label class="field"><span class="required">참여유형</span><select id="projectDetailParticipationTypeCode" class="select" required><option value="LEAD">주관사</option><option value="CONSORTIUM">컨소사</option><option value="SUBCONTRACT">하도급</option></select></label>
+                <label class="field"><span class="required">참여비중 (%)</span><input id="projectDetailParticipationRate" class="input" type="number" min="0" max="100" step="0.01" required></label>
+                <label class="field"><span>발주일</span><input id="projectDetailOrderDate" class="input" type="date"></label>
+                <label class="field"><span>입찰일</span><input id="projectDetailBidDate" class="input" type="date"></label>
+                <label class="field field-span"><span>비고</span><textarea id="projectDetailDescription" class="textarea" maxlength="2000" placeholder="사업 범위, 특이사항 등"></textarea></label>
+            </div>
+            <p id="projectDetailStatus" class="inline-status" aria-live="polite"></p>
+            <div class="form-actions"><button id="saveProjectDetailButton" class="button button-primary" type="submit">프로젝트 저장</button></div>
+        </form>
+    </section>
+
+    <section class="panel" aria-labelledby="projectDetailCompanyTitle">
+        <div class="panel-header">
+            <div>
+                <h3 id="projectDetailCompanyTitle">프로젝트 참여회사 수정</h3>
+                <p>목록에서 회사를 선택해 참여유형·비중·비고를 수정합니다. 등록된 회사가 없으면 아래 입력란에서 최초 참여회사를 저장할 수 있습니다.</p>
+            </div>
+        </div>
+        <div class="table-wrap grid-five-row-viewport">
+            <table class="data-table project-company-management-table">
+                <thead><tr><th>회사명</th><th>회사유형</th><th>참여유형</th><th>참여비중</th><th>비고</th></tr></thead>
+                <tbody id="projectDetailCompanyTableBody"></tbody>
+            </table>
+        </div>
+        <form id="projectDetailCompanyForm" class="project-company-form">
+            <input id="projectDetailCompanyId" type="hidden">
+            <label class="field"><span class="required">회사</span><select id="projectDetailCompanyMaster" class="select" required><option value="">회사 선택</option></select></label>
+            <label class="field"><span class="required">참여유형</span><select id="projectDetailCompanyType" class="select" required><option value="LEAD">주관사</option><option value="CONSORTIUM">컨소사</option><option value="SUBCONTRACT">하도급</option></select></label>
+            <label class="field"><span class="required">참여비중 (%)</span><input id="projectDetailCompanyShareRate" class="input" type="number" min="0" max="100" step="0.01" required></label>
+            <label class="field project-company-note"><span>비고</span><input id="projectDetailCompanyNote" class="input" maxlength="1000"></label>
+            <div class="project-company-actions"><button id="saveProjectDetailCompanyButton" class="button button-primary" type="submit">참여회사 저장</button></div>
+        </form>
+        <p id="projectDetailCompanyStatus" class="inline-status" aria-live="polite"></p>
+    </section>
+</section>

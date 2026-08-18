@@ -20,6 +20,7 @@
             this.pageSizeSelect = resolveElement(this.root, options.pageSizeSelect);
             this.fetchPage = options.fetchPage;
             this.renderRow = options.renderRow;
+            this.itemMode = options.itemMode === true;
             this.rowKey = options.rowKey || ((row) => row?.id);
             this.onSelect = options.onSelect || (() => {});
             this.emptyMessage = options.emptyMessage || "조회된 항목이 없습니다.";
@@ -144,6 +145,13 @@
         render() {
             Common.dom.clear(this.body);
             if (!this.state.rows.length) {
+                if (this.itemMode) {
+                    this.body.appendChild(Common.dom.element("div", {
+                        className: "grid-empty-cell",
+                        text: this.emptyMessage
+                    }));
+                    return;
+                }
                 const row = Common.dom.element("tr");
                 const cell = Common.dom.element("td", {
                     className: "grid-empty-cell",
@@ -161,8 +169,10 @@
                     page: this.state.page,
                     pageSize: this.state.pageSize
                 });
-                if (!(row instanceof HTMLTableRowElement)) {
-                    throw new Error("renderRow must return a table row element.");
+                if (!(row instanceof HTMLElement) || (!this.itemMode && !(row instanceof HTMLTableRowElement))) {
+                    throw new Error(this.itemMode
+                        ? "renderRow must return an HTML element."
+                        : "renderRow must return a table row element.");
                 }
                 const key = String(this.rowKey(record) ?? "");
                 row.dataset.gridRowKey = key;
@@ -205,8 +215,17 @@
             if (options.reload !== false) this.load({ resetPage: true });
         }
 
+        setSort(sortBy, sortDirection = "asc", options = {}) {
+            const nextSortBy = String(sortBy || "");
+            if (!nextSortBy) return;
+            this.state.sortBy = nextSortBy;
+            this.state.sortDirection = sortDirection === "desc" ? "desc" : "asc";
+            this.updateSortHeaders();
+            if (options.reload !== false) this.load({ resetPage: options.resetPage !== false });
+        }
+
         updateSelectedRows() {
-            this.body.querySelectorAll("tr[data-grid-row-key]").forEach((row) => {
+            this.body.querySelectorAll("[data-grid-row-key]").forEach((row) => {
                 const selected = Boolean(this.selectedKey && row.dataset.gridRowKey === this.selectedKey);
                 row.classList.toggle("is-selected", selected);
                 row.setAttribute("aria-selected", selected ? "true" : "false");
@@ -289,11 +308,111 @@
         }
     }
 
+    class ClientTablePager {
+        constructor(table, options = {}) {
+            this.table = table;
+            this.body = table?.tBodies?.[0] || null;
+            this.wrap = table?.closest(".table-wrap") || null;
+            this.pageSize = Math.max(1, numeric(options.pageSize, 100));
+            this.page = 1;
+            this.destroyed = false;
+            this.eventController = new AbortController();
+            this.pagination = document.createElement("nav");
+            this.pagination.className = "grid-pagination client-grid-pagination";
+            this.pagination.setAttribute("aria-label", `${table?.getAttribute("aria-label") || "목록"} 페이지`);
+
+            if (!this.table || !this.body || !this.wrap) {
+                throw new Error("ClientTablePager requires a table body inside .table-wrap.");
+            }
+
+            this.table.dataset.clientGridEnhanced = "true";
+            this.wrap.classList.add("grid-five-row-viewport");
+            this.wrap.insertAdjacentElement("afterend", this.pagination);
+            this.pagination.addEventListener("click", (event) => {
+                const button = event.target.closest("button[data-client-grid-page]");
+                if (!button || button.disabled) return;
+                const nextPage = numeric(button.dataset.clientGridPage, this.page);
+                if (nextPage === this.page) return;
+                this.page = nextPage;
+                this.render();
+            }, { signal: this.eventController.signal });
+            this.observer = new MutationObserver(() => {
+                this.page = 1;
+                this.render();
+            });
+            this.observer.observe(this.body, { childList: true });
+            this.render();
+        }
+
+        pageButton(label, page, options = {}) {
+            return Common.dom.element("button", {
+                className: `grid-page-button${options.current ? " is-current" : ""}`,
+                text: label,
+                type: "button",
+                attrs: {
+                    "data-client-grid-page": page,
+                    "aria-label": options.ariaLabel,
+                    "aria-current": options.current ? "page" : null,
+                    disabled: options.disabled ? "" : null
+                }
+            });
+        }
+
+        render() {
+            if (this.destroyed) return;
+            const rows = Array.from(this.body.rows);
+            const totalPages = Math.max(1, Math.ceil(rows.length / this.pageSize));
+            this.page = Math.min(Math.max(1, this.page), totalPages);
+            const startIndex = (this.page - 1) * this.pageSize;
+            const endIndex = startIndex + this.pageSize;
+            rows.forEach((row, index) => {
+                row.hidden = index < startIndex || index >= endIndex;
+            });
+
+            Common.dom.clear(this.pagination);
+            this.pagination.hidden = totalPages <= 1;
+            if (totalPages <= 1) return;
+            this.pagination.append(
+                this.pageButton("처음", 1, { disabled: this.page <= 1, ariaLabel: "첫 페이지" }),
+                this.pageButton("이전", this.page - 1, { disabled: this.page <= 1, ariaLabel: "이전 페이지" })
+            );
+            const pageStart = Math.max(1, Math.min(this.page - 2, totalPages - 4));
+            const pageEnd = Math.min(totalPages, pageStart + 4);
+            for (let number = pageStart; number <= pageEnd; number += 1) {
+                this.pagination.appendChild(this.pageButton(String(number), number, {
+                    current: number === this.page,
+                    ariaLabel: `${number} 페이지`
+                }));
+            }
+            this.pagination.append(
+                this.pageButton("다음", this.page + 1, { disabled: this.page >= totalPages, ariaLabel: "다음 페이지" }),
+                this.pageButton("마지막", totalPages, { disabled: this.page >= totalPages, ariaLabel: "마지막 페이지" })
+            );
+        }
+
+        destroy() {
+            if (this.destroyed) return;
+            this.destroyed = true;
+            this.observer.disconnect();
+            this.eventController.abort();
+            Array.from(this.body.rows).forEach((row) => { row.hidden = false; });
+            this.wrap.classList.remove("grid-five-row-viewport");
+            delete this.table.dataset.clientGridEnhanced;
+            this.pagination.remove();
+        }
+    }
+
     window.Common = window.Common || {};
     window.Common.grid = {
         create(options) {
             return new ServerDataGrid(options);
         },
-        ServerDataGrid
+        enhanceClientTables(root, options = {}) {
+            return Array.from(root?.querySelectorAll('table.data-table:not([data-grid-pagination="off"])') || [])
+                .filter((table) => table.dataset.clientGridEnhanced !== "true")
+                .map((table) => new ClientTablePager(table, options));
+        },
+        ServerDataGrid,
+        ClientTablePager
     };
 })();

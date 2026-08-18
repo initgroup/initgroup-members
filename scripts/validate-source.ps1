@@ -33,6 +33,49 @@ print(f'Python syntax OK: {len(files)} files')
         throw "Python syntax validation failed."
     }
 
+    $connectionLifecycleCode = @"
+import ast
+from pathlib import Path
+
+errors = []
+for file_path in sorted(Path('backend').rglob('*.py')):
+    tree = ast.parse(file_path.read_text(encoding='utf-8'), filename=str(file_path))
+    for function in (
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ):
+        acquired_names = set()
+        for node in ast.walk(function):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            if not isinstance(node.value.func, ast.Name) or node.value.func.id != 'get_db_connection':
+                continue
+            acquired_names.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+        for acquired_name in acquired_names:
+            released_in_finally = any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'close'
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == acquired_name
+                for try_node in ast.walk(function)
+                if isinstance(try_node, ast.Try)
+                for node in ast.walk(ast.Module(body=try_node.finalbody, type_ignores=[]))
+            )
+            if not released_in_finally:
+                errors.append(f'{file_path}:{function.lineno} {function.name} does not close {acquired_name} in finally')
+
+if errors:
+    raise RuntimeError('DB connection lifecycle contract failed:\n' + '\n'.join(errors))
+print('DB connection lifecycle contract OK')
+"@
+    & $venvPython -c $connectionLifecycleCode
+    if ($LASTEXITCODE -ne 0) {
+        throw "DB connection lifecycle validation failed."
+    }
+
     $definedSqlIds = @{}
     Get-ChildItem -LiteralPath (Join-Path $repoRoot "database") -Filter "*.sql" -File |
         ForEach-Object {
@@ -79,6 +122,20 @@ print(f'Python syntax OK: {len(files)} files')
         throw "SQL ID contract failed. Missing=[$($missingSqlIds -join ', ')] Unused=[$($unusedSqlIds -join ', ')]"
     }
     Write-Host "SQL ID contract OK: $($definedSqlIds.Count) IDs" -ForegroundColor Green
+
+    $sqlBindContractCode = @"
+from backend.database_helper import SqlLoader
+import backend.routers.project_assignments  # Registers critical assignment DML contracts.
+
+registered = SqlLoader.bind_contract_count()
+if registered <= 0:
+    raise RuntimeError('No SQL bind contracts were registered.')
+print(f'SQL bind contract OK: {registered} contracts')
+"@
+    & $venvPython -c $sqlBindContractCode
+    if ($LASTEXITCODE -ne 0) {
+        throw "SQL bind contract validation failed."
+    }
 
     $migrationContractCode = @"
 import re

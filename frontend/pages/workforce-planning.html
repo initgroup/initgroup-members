@@ -13,13 +13,19 @@
 
     <section class="planning-toolbar" aria-label="계획안 도구">
         <label class="field planning-year-field">
-            <span>계획연도</span>
-            <select id="planningYearSelect" class="select"></select>
+            <span class="required">계획연도</span>
+            <select id="planningYearSelect" class="select" required></select>
         </label>
         <label class="field planning-scenario-field">
             <span>계획안</span>
             <select id="planningScenarioSelect" class="select">
                 <option value="">계획안 선택</option>
+            </select>
+        </label>
+        <label class="field planning-project-filter-field">
+            <span>프로젝트</span>
+            <select id="planningProjectFilter" class="select">
+                <option value="">전체 프로젝트</option>
             </select>
         </label>
         <div class="planning-toolbar-actions">
@@ -78,7 +84,6 @@
                             <option value="">전체 인력</option>
                             <option value="INTERNAL">내부 임직원</option>
                             <option value="PARTNER">협력업체</option>
-                            <option value="FREELANCER">계약·프리랜스</option>
                         </select>
                     </label>
                 </div>

@@ -27,7 +27,6 @@ _PROJECT_STATUSES = {
     "CANCELLED",
 }
 _SORT_FIELDS = {
-    "projectYear",
     "projectName",
     "customerName",
     "projectStartDate",
@@ -149,7 +148,9 @@ def _fetch_project(cursor, project_id: int) -> dict[str, Any]:
 
 @router.get("")
 def list_projects(
-    projectYear: int | None = Query(None, ge=1900, le=2100),
+    periodYear: int | None = Query(None, ge=1900, le=2100),
+    periodYearFrom: int | None = Query(None, ge=1900, le=2100),
+    periodYearTo: int | None = Query(None, ge=1900, le=2100),
     keyword: str = Query("", max_length=300),
     statusCode: str = Query("ALL", max_length=30),
     participationTypeCode: str = Query("ALL", max_length=30),
@@ -160,10 +161,12 @@ def list_projects(
     contractAmountMin: int | None = Query(None, ge=0, le=_MAX_AMOUNT),
     contractAmountMax: int | None = Query(None, ge=0, le=_MAX_AMOUNT),
     page: int = Query(1, ge=1, le=100_000),
-    pageSize: int = Query(20, ge=10, le=100),
-    sortBy: str = Query("projectYear", max_length=40),
+    pageSize: int = Query(100, ge=10, le=100),
+    sortBy: str = Query("projectStartDate", max_length=40),
     sortDirection: str = Query("desc", max_length=4),
 ):
+    if periodYearFrom and periodYearTo and periodYearFrom > periodYearTo:
+        raise HTTPException(status_code=400, detail="프로젝트 수행연도 범위를 확인해 주세요.")
     if periodStart and periodEnd and periodStart > periodEnd:
         raise HTTPException(status_code=400, detail="조회 종료일은 시작일보다 빠를 수 없습니다.")
     if bidDateFrom and bidDateTo and bidDateFrom > bidDateTo:
@@ -181,7 +184,9 @@ def list_projects(
         raise HTTPException(status_code=400, detail="정렬 방향은 asc 또는 desc여야 합니다.")
 
     filters = {
-        "projectYear": projectYear,
+        "periodYear": periodYear,
+        "periodYearFrom": periodYearFrom,
+        "periodYearTo": periodYearTo,
         "keyword": _like_pattern(keyword),
         "statusCode": _choice(statusCode, _PROJECT_STATUSES, "진행상태", allow_all=True),
         "participationTypeCode": _choice(

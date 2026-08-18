@@ -245,8 +245,7 @@
         Common.dom.clear(container);
         const rows = [
             ["내부 임직원", Number(workforce?.internalCount || 0), "internal"],
-            ["협력업체 인력", Number(workforce?.partnerCount || 0), "partner"],
-            ["계약·프리랜스", Number(workforce?.freelancerCount || 0), "freelancer"]
+            ["협력업체 인력", Number(workforce?.partnerCount || 0), "partner"]
         ];
         const total = rows.reduce((sum, item) => sum + item[1], 0);
         query("#homeWorkforceTotal").textContent = `${formattedNumber(total)}명`;
@@ -301,8 +300,7 @@
         const profit = scenario ? scenarioSummary.operatingProfit : 0;
         const workforce = data.workforce || {};
         const availableWorkforce = Number(workforce.internalCount || 0)
-            + Number(workforce.partnerCount || 0)
-            + Number(workforce.freelancerCount || 0);
+            + Number(workforce.partnerCount || 0);
 
         query("#homeBidTargetCount").textContent = formattedNumber(projectSummary.bidTargetCount || 0);
         query("#homeProjectCountDetail").textContent = `등록 사업 ${formattedNumber(projectSummary.projectCount || 0)}건 · 수주 ${formattedNumber(projectSummary.awardedCount || 0)}건`;
@@ -390,9 +388,7 @@
             await loadDashboard();
         },
 
-        activate() {
-            return loadDashboard();
-        },
+        activate() {},
 
         destroy() {
             dashboardRequestId += 1;

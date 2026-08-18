@@ -29,18 +29,9 @@ window.MENU_CONFIG = [
             },
             {
                 type: "page",
-                page: "workforce-planning",
-                label: "연간 사업·인력계획",
-                title: "연간 사업·인력계획",
-                icon: "▥",
-                keepAlive: true,
-                roles: ["ADMIN"]
-            },
-            {
-                type: "page",
-                page: "project-assignments",
-                label: "확정 투입 관리",
-                title: "확정 투입 관리",
+                page: "workforce-management",
+                label: "사업·인력 관리",
+                title: "사업·인력 관리",
                 icon: "♙",
                 roles: ["ADMIN"]
             }
@@ -52,6 +43,14 @@ window.MENU_CONFIG = [
         label: "인력·파트너",
         roles: ["ADMIN"],
         children: [
+            {
+                type: "page",
+                page: "init-company",
+                label: "인아이티 관리",
+                title: "인아이티 관리",
+                icon: "▣",
+                roles: ["ADMIN"]
+            },
             {
                 type: "page",
                 page: "admin-users",
@@ -66,22 +65,6 @@ window.MENU_CONFIG = [
                 label: "협력업체 관리",
                 title: "협력업체 관리",
                 icon: "▱",
-                roles: ["ADMIN"]
-            },
-            {
-                type: "page",
-                page: "init-company",
-                label: "인아이티 관리",
-                title: "인아이티 관리",
-                icon: "▣",
-                roles: ["ADMIN"]
-            },
-            {
-                type: "page",
-                page: "freelancer-management",
-                label: "계약·프리랜스 인력",
-                title: "계약·프리랜스 인력",
-                icon: "♢",
                 roles: ["ADMIN"]
             }
         ]
@@ -113,6 +96,6 @@ window.MENU_CONFIG = [
 ];
 
 window.PAGE_FILE_CONFIG = {
-    htmlPages: ["login", "home", "account", "admin-users", "admin-projects", "workforce-planning", "project-assignments", "partner-management", "init-company", "freelancer-management", "admin-notices", "admin-site-settings"],
-    scriptPages: ["login", "home", "account", "admin-users", "admin-projects", "workforce-planning", "project-assignments", "partner-management", "init-company", "freelancer-management", "admin-notices", "admin-site-settings"]
+    htmlPages: ["login", "home", "account", "admin-users", "admin-projects", "workforce-management", "workforce-planning", "project-assignments", "partner-management", "init-company", "admin-notices", "admin-site-settings"],
+    scriptPages: ["login", "home", "account", "admin-users", "admin-projects", "workforce-management", "workforce-planning", "project-assignments", "partner-management", "init-company", "admin-notices", "admin-site-settings"]
 };

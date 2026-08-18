@@ -185,28 +185,6 @@ def _insert_company(cursor, params: dict[str, Any]) -> int:
     return int(value[0] if isinstance(value, list) else value)
 
 
-def _get_or_create_freelancer_company(cursor, user_id: int) -> int:
-    companies = _company_list(cursor, "FREELANCER")
-    if companies:
-        return int(companies[0]["companyId"])
-    return _insert_company(cursor, {
-        "companyTypeCode": "FREELANCER",
-        "companyName": "프리랜서",
-        "businessNumber": None,
-        "representativeName": None,
-        "businessType": None,
-        "businessItem": None,
-        "email": None,
-        "phone": None,
-        "address": None,
-        "websiteUrl": None,
-        "establishedDate": None,
-        "useYn": "Y",
-        "note": "프리랜서 소속 구분용 시스템 회사",
-        "userId": user_id,
-    })
-
-
 def _save_employee(
     company_id: int,
     company_type: str,
@@ -246,7 +224,6 @@ def _save_employee(
     finally:
         cursor.close()
         conn.close()
-
 
 def _delete_employee(company_id: int, company_type: str, employee_id: int) -> dict[str, str]:
     conn = get_db_connection()
@@ -508,65 +485,3 @@ def delete_history(company_id: int, history_id: int):
     finally:
         cursor.close()
         conn.close()
-
-
-@router.get("/freelancers")
-def list_freelancers():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        companies = _company_list(cursor, "FREELANCER")
-        company = companies[0] if companies else None
-        employees: list[dict[str, Any]] = []
-        if company:
-            cursor.execute(
-                SqlLoader.get_sql("COMPANY_EMPLOYEE_LIST"),
-                {"companyId": company["companyId"], "companyTypeCode": "FREELANCER"},
-            )
-            employees = _rows(cursor)
-        return {"status": "success", "data": {"company": company, "employees": employees}}
-    except Exception as exc:
-        logger.exception("Freelancer list query failed.")
-        _raise_company_read_error(exc)
-    finally:
-        cursor.close()
-        conn.close()
-
-
-@router.post("/freelancers/employees")
-def create_freelancer(payload: EmployeeWriteRequest, request: Request):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        user_id = get_request_user_id(request)
-        company_id = _get_or_create_freelancer_company(cursor, user_id)
-        params = {**_employee_params(payload, user_id), "companyId": company_id}
-        output = cursor.var(oracledb.DB_TYPE_NUMBER)
-        cursor.execute(
-            SqlLoader.get_sql("COMPANY_EMPLOYEE_INSERT"),
-            {**params, "companyEmployeeIdOut": output},
-        )
-        value = output.getvalue()
-        employee_id = int(value[0] if isinstance(value, list) else value)
-        conn.commit()
-        return {"status": "success", "data": {"companyId": company_id, "companyEmployeeId": employee_id}}
-    except HTTPException:
-        conn.rollback()
-        raise
-    except Exception as exc:
-        conn.rollback()
-        logger.exception("Freelancer creation failed.")
-        raise HTTPException(status_code=409, detail="프리랜서를 저장하지 못했습니다. 사번 중복 여부를 확인해 주세요.") from exc
-    finally:
-        cursor.close()
-        conn.close()
-
-
-@router.put("/freelancers/{company_id}/employees/{employee_id}")
-def update_freelancer(company_id: int, employee_id: int, payload: EmployeeWriteRequest, request: Request):
-    return _save_employee(company_id, "FREELANCER", employee_id, payload, request)
-
-
-@router.delete("/freelancers/{company_id}/employees/{employee_id}")
-def delete_freelancer(company_id: int, employee_id: int):
-    return _delete_employee(company_id, "FREELANCER", employee_id)

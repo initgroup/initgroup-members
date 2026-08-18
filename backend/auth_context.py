@@ -14,6 +14,10 @@ from backend.database_helper import SqlLoader
 
 logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = os.getenv("INIT_SESSION_COOKIE_NAME", "init_session")
+SqlLoader.register_bind_contract(
+    "AUTH_SESSION_TOUCH",
+    {"sessionTokenHash", "ttlSeconds"},
+)
 
 
 def get_session_ttl_seconds() -> int:
@@ -22,14 +26,6 @@ def get_session_ttl_seconds() -> int:
     except (TypeError, ValueError):
         configured = 28800
     return max(300, min(configured, 7 * 24 * 60 * 60))
-
-
-def get_session_touch_interval_seconds() -> int:
-    try:
-        configured = int(os.getenv("INIT_SESSION_TOUCH_INTERVAL_SECONDS", "60"))
-    except (TypeError, ValueError):
-        configured = 60
-    return max(15, min(configured, 3600))
 
 
 def get_auth_query_timeout_ms() -> int:
@@ -200,7 +196,6 @@ def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, A
                 {
                     "sessionTokenHash": token_hash,
                     "ttlSeconds": get_session_ttl_seconds(),
-                    "touchIntervalSeconds": get_session_touch_interval_seconds(),
                 },
             )
             conn.commit()

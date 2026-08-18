@@ -22,7 +22,17 @@ logger = logging.getLogger(__name__)
 
 def _pool_snapshot(pool) -> str:
     parts = []
-    for name in ("opened", "busy", "max", "min", "increment"):
+    for name in (
+        "opened",
+        "busy",
+        "max",
+        "min",
+        "increment",
+        "timeout",
+        "max_lifetime_session",
+        "ping_interval",
+        "ping_timeout",
+    ):
         value = getattr(pool, name, None)
         if value is not None:
             parts.append(f"{name}={value}")
@@ -130,13 +140,38 @@ def get_db_pool():
             1000,
             min(30000, int(os.getenv("DB_POOL_WAIT_TIMEOUT_MS", "30000"))),
         )
+        pool_min = max(1, int(os.getenv("DB_POOL_MIN", "1")))
+        pool_max = max(pool_min, int(os.getenv("DB_POOL_MAX", "6")))
+        pool_increment = max(
+            1,
+            min(
+                pool_max - pool_min or 1,
+                int(os.getenv("DB_POOL_INCREMENT", "1")),
+            ),
+        )
         pool_args = {
             **connect_args,
-            "min": int(os.getenv("DB_POOL_MIN", "1")),
-            "max": int(os.getenv("DB_POOL_MAX", "6")),
-            "increment": int(os.getenv("DB_POOL_INCREMENT", "1")),
+            "min": pool_min,
+            "max": pool_max,
+            "increment": pool_increment,
             "getmode": oracledb.POOL_GETMODE_TIMEDWAIT,
             "wait_timeout": wait_timeout_ms,
+            "timeout": max(
+                60,
+                int(os.getenv("DB_POOL_IDLE_TIMEOUT_SECONDS", "300")),
+            ),
+            "max_lifetime_session": max(
+                300,
+                int(os.getenv("DB_POOL_MAX_LIFETIME_SECONDS", "3600")),
+            ),
+            "ping_interval": max(
+                0,
+                int(os.getenv("DB_POOL_PING_INTERVAL_SECONDS", "60")),
+            ),
+            "ping_timeout": max(
+                1000,
+                int(os.getenv("DB_POOL_PING_TIMEOUT_MS", "5000")),
+            ),
         }
 
         logger.info(
@@ -146,9 +181,31 @@ def get_db_pool():
             pool_args["max"],
             wait_timeout_ms,
         )
-        _pool = oracledb.create_pool(**pool_args)
-        logger.info("Oracle connection pool ready.")
+        candidate_pool = oracledb.create_pool(**pool_args)
+        warm_connection = None
+        try:
+            warm_connection = candidate_pool.acquire()
+            warm_connection.ping()
+        except Exception:
+            logger.exception(
+                "Oracle connection pool warm-up failed. %s. "
+                "Check Oracle Cloud availability, network access, DSN, Wallet, and credentials.",
+                _pool_snapshot(candidate_pool),
+            )
+            candidate_pool.close(force=True)
+            raise
+        finally:
+            if warm_connection:
+                warm_connection.close()
+
+        _pool = candidate_pool
+        logger.info("Oracle connection pool ready. %s", _pool_snapshot(_pool))
         return _pool
+
+
+def initialize_db_pool() -> None:
+    """Create and verify the system DB pool before accepting API requests."""
+    get_db_pool()
 
 
 def close_db_pool():

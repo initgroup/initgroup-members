@@ -10,8 +10,7 @@
     };
     const WORKER_LABELS = {
         INTERNAL: "내부",
-        PARTNER: "협력",
-        FREELANCER: "계약·프리랜스"
+        PARTNER: "협력"
     };
     const moneyFormatter = new Intl.NumberFormat("ko-KR", {
         style: "currency",
@@ -85,7 +84,7 @@
             : JSON.parse(JSON.stringify(value));
     }
 
-    function hasUnsavedChanges() {
+    function hasPendingChanges() {
         return dirty || formDirty;
     }
 
@@ -297,7 +296,7 @@
 
     function updateDirtyState() {
         const badge = query("#planningDirtyBadge");
-        if (badge) badge.hidden = !hasUnsavedChanges();
+        if (badge) badge.hidden = !hasPendingChanges();
         updateToolbarState();
     }
 
@@ -309,7 +308,7 @@
         query("#planningNewScenarioButton").disabled = scenarioLoading;
         query("#planningWorkspace").inert = scenarioLoading;
         query("#planningWorkspace").setAttribute("aria-busy", String(scenarioLoading));
-        query("#planningSaveButton").disabled = !hasScenario || !editable || !hasUnsavedChanges();
+        query("#planningSaveButton").disabled = !hasScenario || !editable || !hasPendingChanges();
         query("#planningConfirmButton").disabled = !hasScenario || !editable;
         query("#planningDeleteScenarioButton").disabled = !hasScenario || !editable;
         const revision = query("#planningRevisionLabel");
@@ -383,13 +382,36 @@
         return `${project.projectName || ""} ${project.customerName || ""}`.toLowerCase().includes(keyword);
     }
 
+    function selectedProjectFilterId() {
+        return query("#planningProjectFilter")?.value || "";
+    }
+
+    function renderProjectFilterOptions() {
+        const select = query("#planningProjectFilter");
+        if (!select) return;
+        const selectedValue = select.value;
+        Common.dom.clear(select);
+        const allOption = element("option", "", references.projects.length ? "전체 프로젝트" : "등록된 프로젝트 없음");
+        allOption.value = "";
+        select.appendChild(allOption);
+        references.projects.forEach((project) => {
+            const item = element("option", "", project.projectName || "프로젝트명 미정");
+            item.value = project.projectId;
+            select.appendChild(item);
+        });
+        if ([...select.options].some((item) => item.value === selectedValue)) select.value = selectedValue;
+    }
+
     function renderProjectPool() {
         const pool = query("#planningProjectPool");
         Common.dom.clear(pool);
         const keyword = query("#planningProjectSearch").value.trim().toLowerCase();
+        const selectedProjectId = selectedProjectFilterId();
         const includedIds = new Set((scenario?.projects || []).map((item) => String(item.projectId)));
         const rows = references.projects.filter((item) => (
-            !includedIds.has(String(item.projectId)) && projectMatches(item, keyword)
+            (!selectedProjectId || String(item.projectId) === String(selectedProjectId))
+            && !includedIds.has(String(item.projectId))
+            && projectMatches(item, keyword)
         ));
         query("#planningProjectPoolCount").textContent = rows.length;
 
@@ -403,7 +425,7 @@
             card.dataset.projectId = project.projectId;
             const meta = element("div", "planning-card-meta");
             meta.append(
-                element("span", "planning-year-chip", project.projectYear),
+                element("span", "planning-year-chip", `등록 ${project.projectYear}`),
                 element("span", `planning-status-chip is-${String(project.statusCode || "planned").toLowerCase()}`, project.statusCode || "PLANNED")
             );
             const title = element("strong", "", project.projectName);
@@ -487,7 +509,10 @@
     function renderProjectLanes() {
         const container = query("#planningProjectLanes");
         Common.dom.clear(container);
-        const projects = scenario?.projects || [];
+        const selectedProjectId = selectedProjectFilterId();
+        const projects = (scenario?.projects || []).filter((project) => (
+            !selectedProjectId || String(project.projectId) === String(selectedProjectId)
+        ));
         query("#planningEmptyState").hidden = projects.length > 0;
         projects.forEach((project) => {
             const lane = element("article", "planning-project-lane");
@@ -810,12 +835,8 @@
         if (!context) return false;
         const startDate = query("#planningAssignmentStartDate").value;
         const endDate = query("#planningAssignmentEndDate").value;
-        if (
-            startDate > endDate
-            || startDate < context.project.plannedStartDate
-            || endDate > context.project.plannedEndDate
-        ) {
-            Common.ui.setInlineStatus(query("#planningStatus"), "투입기간은 프로젝트 예상기간 안에서 설정해 주세요.", "error");
+        if (startDate > endDate) {
+            Common.ui.setInlineStatus(query("#planningStatus"), "투입 종료일은 시작일보다 빠를 수 없습니다.", "error");
             return false;
         }
         const monthlyAllocations = [...query("#planningMonthEditor").querySelectorAll("input")].map((input) => ({
@@ -978,6 +999,7 @@
                 workers: referenceData.workers || [],
                 actualCapacity: referenceData.actualCapacity || []
             };
+            renderProjectFilterOptions();
             scenarios = Common.data.get(scenarioPayloadResult)?.scenarios || [];
             const targetId = preferredScenarioId || scenarios[0]?.scenarioId || "";
             if (targetId) await loadScenario(targetId);
@@ -999,6 +1021,7 @@
             savedScenario = null;
             scenarios = [];
             references = { projects: [], workers: [], actualCapacity: [] };
+            renderProjectFilterOptions();
             renderAll();
             Common.ui.setInlineStatus(query("#planningStatus"), error.message || "계획자료를 불러오지 못했습니다.", "error");
         } finally {
@@ -1030,7 +1053,7 @@
 
     async function confirmScenario() {
         if (!scenarioEditable()) return;
-        if (hasUnsavedChanges() && !(await saveScenario({ silent: true }))) return;
+        if (hasPendingChanges() && !(await saveScenario({ silent: true }))) return;
         const summary = calculateScenario();
         const warningText = summary.warnings.length
             ? ` 계획 위험 ${summary.warnings.length}건이 남아 있습니다.`
@@ -1071,7 +1094,6 @@
     }
 
     async function openScenarioDialog() {
-        if (!(await canDiscardChanges())) return;
         const year = Number(query("#planningYearSelect").value);
         query("#planningScenarioForm").reset();
         query("#planningScenarioYear").value = year;
@@ -1121,10 +1143,10 @@
     }
 
     async function canDiscardChanges() {
-        if (!hasUnsavedChanges()) return true;
+        if (!hasPendingChanges()) return true;
         const confirmed = await Common.ui.confirm(
-            "저장하지 않은 계획 변경사항이 있습니다. 변경사항을 버리고 이동하시겠습니까?",
-            { title: "변경사항 확인", confirmText: "버리고 이동", danger: true }
+            "저장하지 않은 계획 변경사항이 있습니다. 저장하지 않고 다른 화면으로 이동하시겠습니까?",
+            { title: "변경사항 확인", confirmText: "저장하지 않고 이동", danger: true }
         );
         if (confirmed) discardWorkingChanges();
         return confirmed;
@@ -1221,26 +1243,18 @@
     }
 
     function beforeUnload(event) {
-        if (!hasUnsavedChanges()) return;
+        if (!hasPendingChanges()) return;
         event.preventDefault();
         event.returnValue = "";
     }
 
     function bindEvents() {
         query("#planningYearSelect").addEventListener("change", async (event) => {
-            if (!(await canDiscardChanges())) {
-                event.target.value = String(scenario?.planYear || new Date().getFullYear() + 1);
-                return;
-            }
             scenario = null;
             await loadYear();
         }, { signal: controller.signal });
         query("#planningScenarioSelect").addEventListener("change", async (event) => {
             const nextScenarioId = event.target.value;
-            if (!(await canDiscardChanges())) {
-                event.target.value = scenario?.scenarioId || "";
-                return;
-            }
             try {
                 await loadScenario(nextScenarioId);
                 Common.ui.setInlineStatus(query("#planningStatus"), "계획안을 불러왔습니다.", "success");
@@ -1253,6 +1267,13 @@
                     "error"
                 );
             }
+        }, { signal: controller.signal });
+        query("#planningProjectFilter").addEventListener("change", () => {
+            selectedProjectKey = "";
+            selectedAssignmentKey = "";
+            renderProjectPool();
+            renderProjectLanes();
+            renderInspector();
         }, { signal: controller.signal });
         query("#planningProjectSearch").addEventListener("input", renderProjectPool, { signal: controller.signal });
         query("#planningWorkerSearch").addEventListener("input", renderWorkerPool, { signal: controller.signal });
@@ -1324,13 +1345,27 @@
             initializeYears(context.routeContext?.planYear);
             bindEvents();
             renderAll();
-            await loadYear();
+            await loadYear(context.routeContext?.scenarioId || "");
+            const requestedProjectId = context.routeContext?.projectId;
+            const requestedProject = scenario?.projects?.find((item) => String(item.projectId) === String(requestedProjectId));
+            if (requestedProject) {
+                selectedProjectKey = requestedProject.clientKey;
+                selectedAssignmentKey = "";
+                renderAll();
+                focusInspector();
+            }
         },
         beforeLeave() {
             return canDiscardChanges();
         },
+        hasUnsavedChanges() {
+            return hasPendingChanges();
+        },
+        discardChanges() {
+            discardWorkingChanges();
+        },
         async activate(context = {}) {
-            if (!root || hasUnsavedChanges()) return;
+            if (!root || hasPendingChanges()) return;
             const requestedYear = Number(context.routeContext?.planYear);
             if (
                 Number.isInteger(requestedYear)
@@ -1340,9 +1375,7 @@
             ) {
                 initializeYears(requestedYear);
                 await loadYear();
-                return;
             }
-            await loadYear(scenario?.scenarioId || "");
         },
         destroy() {
             controller?.abort();

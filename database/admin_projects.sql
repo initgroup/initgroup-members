@@ -2,7 +2,21 @@
 SELECT COUNT(*) AS TOTAL_COUNT
   FROM "INIT$_TB_PROJECT" P
  WHERE 1=1
-   AND (:projectYear IS NULL OR P.PROJECT_YEAR = :projectYear)
+   AND (
+        :periodYear IS NULL
+        OR (
+            P.PROJECT_START_DATE <= TO_DATE(TO_CHAR(:periodYear) || '1231', 'YYYYMMDD')
+            AND P.PROJECT_END_DATE >= TO_DATE(TO_CHAR(:periodYear) || '0101', 'YYYYMMDD')
+           )
+       )
+   AND (
+        :periodYearFrom IS NULL
+        OR P.PROJECT_END_DATE >= TO_DATE(TO_CHAR(:periodYearFrom) || '0101', 'YYYYMMDD')
+       )
+   AND (
+        :periodYearTo IS NULL
+        OR P.PROJECT_START_DATE <= TO_DATE(TO_CHAR(:periodYearTo) || '1231', 'YYYYMMDD')
+       )
    AND (
         :keyword IS NULL
         OR UPPER(P.PROJECT_NAME) LIKE :keyword ESCAPE '\'
@@ -38,7 +52,21 @@ SELECT P.PROJECT_ID
      , P.UPDATED_AT
   FROM "INIT$_TB_PROJECT" P
  WHERE 1=1
-   AND (:projectYear IS NULL OR P.PROJECT_YEAR = :projectYear)
+   AND (
+        :periodYear IS NULL
+        OR (
+            P.PROJECT_START_DATE <= TO_DATE(TO_CHAR(:periodYear) || '1231', 'YYYYMMDD')
+            AND P.PROJECT_END_DATE >= TO_DATE(TO_CHAR(:periodYear) || '0101', 'YYYYMMDD')
+           )
+       )
+   AND (
+        :periodYearFrom IS NULL
+        OR P.PROJECT_END_DATE >= TO_DATE(TO_CHAR(:periodYearFrom) || '0101', 'YYYYMMDD')
+       )
+   AND (
+        :periodYearTo IS NULL
+        OR P.PROJECT_START_DATE <= TO_DATE(TO_CHAR(:periodYearTo) || '1231', 'YYYYMMDD')
+       )
    AND (
         :keyword IS NULL
         OR UPPER(P.PROJECT_NAME) LIKE :keyword ESCAPE '\'
@@ -55,11 +83,7 @@ SELECT P.PROJECT_ID
    AND (:bidDateTo IS NULL OR P.BID_DATE <= :bidDateTo)
    AND (:contractAmountMin IS NULL OR P.CONTRACT_AMOUNT_VAT >= :contractAmountMin)
    AND (:contractAmountMax IS NULL OR P.CONTRACT_AMOUNT_VAT <= :contractAmountMax)
- ORDER BY CASE WHEN :sortBy = 'projectYear' AND :sortDirection = 'asc'
-               THEN P.PROJECT_YEAR END ASC
-        , CASE WHEN :sortBy = 'projectYear' AND :sortDirection = 'desc'
-               THEN P.PROJECT_YEAR END DESC
-        , CASE WHEN :sortBy = 'projectName' AND :sortDirection = 'asc'
+ ORDER BY CASE WHEN :sortBy = 'projectName' AND :sortDirection = 'asc'
                THEN P.PROJECT_NAME END ASC
         , CASE WHEN :sortBy = 'projectName' AND :sortDirection = 'desc'
                THEN P.PROJECT_NAME END DESC

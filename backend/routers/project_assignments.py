@@ -20,10 +20,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin_role)])
 _PARTICIPATION_TYPES = {"LEAD", "CONSORTIUM", "SUBCONTRACT"}
 _ALLOCATION_TYPES = {"MONTHLY", "WEEKLY"}
+_ASSIGNMENT_STATUS_CODES = {"CONFIRMED", "PLANNED"}
 _WEEKDAYS = {"MON", "TUE", "WED", "THU", "FRI"}
 _MONTH_PATTERN = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _MAX_AMOUNT = 999_999_999_999_999_999
 MoneyText = Annotated[str, Field(pattern=r"^\d{1,18}$")]
+
+_ASSIGNMENT_COMMON_BIND_NAMES = {
+    "projectId",
+    "employeeUserId",
+    "companyEmployeeId",
+    "projectCompanyId",
+    "assignmentStartDate",
+    "assignmentEndDate",
+    "assignmentStatusCode",
+    "allocationTypeCode",
+    "defaultMm",
+    "weeklyDayCodes",
+    "monthlyAllocationJson",
+    "totalMm",
+    "costUnitPrice",
+    "salesUnitPrice",
+    "totalCostAmount",
+    "totalSalesAmount",
+    "operatingProfit",
+    "note",
+    "projectRoleName",
+    "primaryDuty",
+    "userId",
+}
+SqlLoader.register_bind_contract(
+    "PROJECT_ASSIGNMENT_INSERT",
+    _ASSIGNMENT_COMMON_BIND_NAMES | {"displayOrder", "assignmentIdOut"},
+)
+SqlLoader.register_bind_contract(
+    "PROJECT_ASSIGNMENT_UPDATE",
+    _ASSIGNMENT_COMMON_BIND_NAMES | {"assignmentId", "versionToken"},
+)
 
 
 class CompanyWriteRequest(BaseModel):
@@ -51,6 +84,7 @@ class AssignmentWriteRequest(BaseModel):
     projectCompanyId: int = Field(gt=0)
     assignmentStartDate: date
     assignmentEndDate: date
+    assignmentStatusCode: str = Field(default="CONFIRMED", pattern=r"^(CONFIRMED|PLANNED)$")
     allocationTypeCode: str = Field(default="MONTHLY", max_length=30)
     defaultMm: Decimal = Field(default=Decimal("1"), ge=0, le=1, decimal_places=2)
     weeklyDayCodes: list[str] = Field(default_factory=list, max_length=5)
@@ -62,6 +96,8 @@ class AssignmentWriteRequest(BaseModel):
     # Browser JSON numbers cannot preserve all Oracle NUMBER(18) values.
     costUnitPrice: MoneyText = "0"
     salesUnitPrice: MoneyText = "0"
+    projectRoleName: str = Field(default="", max_length=100)
+    primaryDuty: str = Field(default="", max_length=1000)
     note: str = Field(default="", max_length=2000)
     versionToken: str | None = Field(default=None, min_length=1, max_length=40)
     model_config = ConfigDict(extra="forbid")
@@ -69,6 +105,16 @@ class AssignmentWriteRequest(BaseModel):
 
 class AssignmentUpdateRequest(AssignmentWriteRequest):
     versionToken: str = Field(min_length=1, max_length=40)
+
+
+class AssignmentReorderRequest(BaseModel):
+    assignmentIds: list[Annotated[int, Field(gt=0)]] = Field(min_length=1, max_length=500)
+    model_config = ConfigDict(extra="forbid")
+
+
+class AssignmentBatchCreateRequest(BaseModel):
+    assignments: list[AssignmentWriteRequest] = Field(min_length=1, max_length=100)
+    model_config = ConfigDict(extra="forbid")
 
 
 def _is_money_column(column: str | None) -> bool:
@@ -196,6 +242,9 @@ def _assignment_params(payload: AssignmentWriteRequest) -> dict[str, Any]:
     allocation_type = payload.allocationTypeCode.strip().upper()
     if allocation_type not in _ALLOCATION_TYPES:
         raise HTTPException(status_code=400, detail="지원하지 않는 배분 방식입니다.")
+    assignment_status = payload.assignmentStatusCode.strip().upper()
+    if assignment_status not in _ASSIGNMENT_STATUS_CODES:
+        raise HTTPException(status_code=400, detail="투입 구분은 확정 투입 또는 계획 투입이어야 합니다.")
     weekdays = []
     for value in payload.weeklyDayCodes:
         code = str(value).strip().upper()
@@ -247,6 +296,7 @@ def _assignment_params(payload: AssignmentWriteRequest) -> dict[str, Any]:
         "projectCompanyId": payload.projectCompanyId,
         "assignmentStartDate": payload.assignmentStartDate,
         "assignmentEndDate": payload.assignmentEndDate,
+        "assignmentStatusCode": assignment_status,
         "allocationTypeCode": allocation_type,
         "defaultMm": payload.defaultMm,
         "weeklyDayCodes": ",".join(weekdays) if weekdays else None,
@@ -254,6 +304,8 @@ def _assignment_params(payload: AssignmentWriteRequest) -> dict[str, Any]:
         "totalMm": total_mm,
         "costUnitPrice": int(payload.costUnitPrice),
         "salesUnitPrice": int(payload.salesUnitPrice),
+        "projectRoleName": payload.projectRoleName.strip() or None,
+        "primaryDuty": payload.primaryDuty.strip() or None,
         "totalCostAmount": total_cost,
         "totalSalesAmount": total_sales,
         "operatingProfit": total_sales - total_cost,
@@ -288,12 +340,13 @@ def _ensure_person(cursor, project_id: int, payload: AssignmentWriteRequest) -> 
             "projectCompanyId": payload.projectCompanyId,
             "employeeUserId": payload.employeeUserId,
             "companyEmployeeId": payload.companyEmployeeId,
-            "assignmentStartDate": payload.assignmentStartDate,
-            "assignmentEndDate": payload.assignmentEndDate,
         },
     )
     if int(cursor.fetchone()[0] or 0) <= 0:
-        raise HTTPException(status_code=400, detail="선택한 임직원이 소속회사에 등록되어 있지 않습니다.")
+        raise HTTPException(
+            status_code=400,
+            detail="선택한 인력의 소속회사와 프로젝트 참여회사가 일치하지 않습니다. 프로젝트 상세에서 해당 소속회사를 참여회사로 등록해 주세요.",
+        )
 
 
 def _ensure_company_share(cursor, project_id: int, company_id: int | None, share_rate: Decimal) -> None:
@@ -425,12 +478,18 @@ def project_assignment_workspace(
             {"projectYear": projectYear},
         )
         assignments = _rows(cursor)
+        cursor.execute(
+            SqlLoader.get_sql("PROJECT_ASSIGNMENT_WORKSPACE_COMPANIES"),
+            {"projectYear": projectYear},
+        )
+        companies = _rows(cursor)
         return {
             "status": "success",
             "data": {
                 "projectYear": projectYear,
                 "projects": projects,
                 "assignments": assignments,
+                "companies": companies,
             },
         }
     except HTTPException:
@@ -574,26 +633,26 @@ def _save_assignment(project_id: int, assignment_id: int | None, payload: Assign
                 payload.versionToken,
                 "투입정보",
             )
-        cursor.execute(SqlLoader.get_sql("PROJECT_ASSIGNMENT_PROJECT"), {"projectId": project_id})
-        project = _current_row(cursor)
-        project_start_date = date.fromisoformat(str(project["projectStartDate"])[:10])
-        project_end_date = date.fromisoformat(str(project["projectEndDate"])[:10])
-        if (
-            payload.assignmentStartDate < project_start_date
-            or payload.assignmentEndDate > project_end_date
-        ):
-            raise HTTPException(status_code=400, detail="투입기간은 프로젝트 기간 안에서 설정해 주세요.")
         _ensure_company(cursor, project_id, payload.projectCompanyId)
         _ensure_person(cursor, project_id, payload)
         common = {**params, "projectId": project_id, "userId": get_request_user_id(request)}
-        cursor.setinputsizes(monthlyAllocationJson=oracledb.DB_TYPE_CLOB)
         if assignment_id is not None:
+            cursor.setinputsizes(monthlyAllocationJson=oracledb.DB_TYPE_CLOB)
             cursor.execute(SqlLoader.get_sql("PROJECT_ASSIGNMENT_UPDATE"), {**common, "assignmentId": assignment_id, "versionToken": payload.versionToken})
             if cursor.rowcount <= 0:
                 raise HTTPException(status_code=409, detail="다른 사용자가 투입정보를 변경했습니다. 새로고침 후 다시 시도해 주세요.")
         else:
+            cursor.execute(
+                SqlLoader.get_sql("PROJECT_ASSIGNMENT_NEXT_DISPLAY_ORDER"),
+                {"projectId": project_id},
+            )
+            display_order = int(cursor.fetchone()[0])
             output = cursor.var(oracledb.DB_TYPE_NUMBER)
-            cursor.execute(SqlLoader.get_sql("PROJECT_ASSIGNMENT_INSERT"), {**common, "assignmentIdOut": output})
+            cursor.setinputsizes(monthlyAllocationJson=oracledb.DB_TYPE_CLOB)
+            cursor.execute(
+                SqlLoader.get_sql("PROJECT_ASSIGNMENT_INSERT"),
+                {**common, "displayOrder": display_order, "assignmentIdOut": output},
+            )
             value = output.getvalue()
             assignment_id = int(value[0] if isinstance(value, list) else value)
         conn.commit()
@@ -615,6 +674,113 @@ def _save_assignment(project_id: int, assignment_id: int | None, payload: Assign
 @router.post("/{project_id}/assignments")
 def create_assignment(project_id: int, payload: AssignmentWriteRequest, request: Request):
     return _save_assignment(project_id, None, payload, request)
+
+
+@router.post("/{project_id}/assignments/batch")
+def create_assignments_batch(
+    project_id: Annotated[int, Path(gt=0)],
+    payload: AssignmentBatchCreateRequest,
+    request: Request,
+):
+    conn = None
+    cursor = None
+    insert_cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        insert_cursor = conn.cursor()
+        insert_cursor.setinputsizes(monthlyAllocationJson=oracledb.DB_TYPE_CLOB)
+        _lock_project(cursor, project_id)
+        cursor.execute(
+            SqlLoader.get_sql("PROJECT_ASSIGNMENT_NEXT_DISPLAY_ORDER"),
+            {"projectId": project_id},
+        )
+        display_order = int(cursor.fetchone()[0])
+        user_id = get_request_user_id(request)
+        assignment_ids = []
+        for index, assignment in enumerate(payload.assignments):
+            params = _assignment_params(assignment)
+            _ensure_company(cursor, project_id, assignment.projectCompanyId)
+            _ensure_person(cursor, project_id, assignment)
+            output = insert_cursor.var(oracledb.DB_TYPE_NUMBER)
+            insert_cursor.execute(
+                SqlLoader.get_sql("PROJECT_ASSIGNMENT_INSERT"),
+                {
+                    **params,
+                    "projectId": project_id,
+                    "userId": user_id,
+                    "displayOrder": display_order + (index * 10),
+                    "assignmentIdOut": output,
+                },
+            )
+            value = output.getvalue()
+            assignment_ids.append(int(value[0] if isinstance(value, list) else value))
+        conn.commit()
+        return {"status": "success", "data": {"assignmentIds": assignment_ids}}
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        if isinstance(exc, HTTPException):
+            raise
+        logger.exception("Project assignment batch save failed.")
+        _raise_assignment_write_error(exc, "투입인력 일괄 저장에 실패했습니다.")
+    finally:
+        if insert_cursor:
+            insert_cursor.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@router.put("/{project_id}/assignments/reorder")
+def reorder_assignments(
+    project_id: Annotated[int, Path(gt=0)],
+    payload: AssignmentReorderRequest,
+    request: Request,
+):
+    if len(payload.assignmentIds) != len(set(payload.assignmentIds)):
+        raise HTTPException(status_code=400, detail="배치 순서에 중복된 투입정보가 있습니다.")
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        _lock_project(cursor, project_id)
+        cursor.execute(
+            SqlLoader.get_sql("PROJECT_ASSIGNMENT_COUNT"),
+            {"projectId": project_id},
+        )
+        if int(cursor.fetchone()[0]) != len(payload.assignmentIds):
+            raise HTTPException(status_code=409, detail="배치 목록이 변경되었습니다. 새로고침 후 다시 시도해 주세요.")
+        sql = SqlLoader.get_sql("PROJECT_ASSIGNMENT_REORDER")
+        user_id = get_request_user_id(request)
+        for index, assignment_id in enumerate(payload.assignmentIds, start=1):
+            cursor.execute(
+                sql,
+                {
+                    "projectId": project_id,
+                    "assignmentId": assignment_id,
+                    "displayOrder": index * 10,
+                    "userId": user_id,
+                },
+            )
+            if cursor.rowcount != 1:
+                raise HTTPException(status_code=409, detail="배치 목록이 변경되었습니다. 새로고침 후 다시 시도해 주세요.")
+        conn.commit()
+        return {"status": "success", "data": {"assignmentIds": payload.assignmentIds}}
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        if isinstance(exc, HTTPException):
+            raise
+        logger.exception("Project assignment reorder failed.")
+        _raise_assignment_write_error(exc, "투입인력 배치 순서를 저장하지 못했습니다.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.put("/{project_id}/assignments/{assignment_id}")

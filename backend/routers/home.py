@@ -188,18 +188,16 @@ def dashboard(
         workforce = {
             "internalCount": int(count_row[1] or 0),
             "partnerCount": 0,
-            "freelancerCount": 0,
         }
         try:
             cursor.execute(
                 SqlLoader.get_sql("HOME_EXECUTIVE_WORKFORCE_SUMMARY"),
                 {"planYear": plan_year},
             )
-            workforce_row = cursor.fetchone() or (count_row[1], 0, 0)
+            workforce_row = cursor.fetchone() or (count_row[1], 0)
             workforce = {
                 "internalCount": int(workforce_row[0] or 0),
                 "partnerCount": int(workforce_row[1] or 0),
-                "freelancerCount": int(workforce_row[2] or 0),
             }
         except Exception as exc:
             if _oracle_error_code(exc) not in {904, 942}:
