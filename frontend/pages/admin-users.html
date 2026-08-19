@@ -36,6 +36,8 @@
                         <th scope="col">담당부서</th>
                         <th scope="col">직급</th>
                         <th scope="col">직책</th>
+                        <th scope="col">기술등급</th>
+                        <th scope="col">경력월수</th>
                         <th scope="col">재직상태</th>
                         <th scope="col">이메일</th>
                         <th scope="col">권한</th>
@@ -156,6 +158,21 @@
                         <label class="field">
                             <span>직책</span>
                             <input id="userJobTitle" class="input" type="text" maxlength="100" placeholder="예: 팀장, 본부장">
+                        </label>
+                        <label class="field">
+                            <span>기술등급</span>
+                            <select id="userTechnicalGradeCode" class="select">
+                                <option value="">선택 안 함</option>
+                                <option value="PROFESSIONAL_ENGINEER">기술사</option>
+                                <option value="SPECIAL">특급</option>
+                                <option value="ADVANCED">고급</option>
+                                <option value="INTERMEDIATE">중급</option>
+                                <option value="BEGINNER">초급</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>경력월수</span>
+                            <input id="userCareerMonths" class="input" type="number" min="0" max="1200" step="1" placeholder="예: 60">
                         </label>
                         <label class="field">
                             <span>근무지</span>

@@ -13,6 +13,7 @@ from backend.auth_context import (
     get_request_user_id,
 )
 from backend.database import get_db_connection
+from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.passwords import hash_password, verify_password
 
@@ -120,7 +121,7 @@ def update_profile(payload: ProfileUpdateRequest, request: Request):
         if conn:
             conn.rollback()
         logger.exception("Account profile update failed.")
-        raise HTTPException(status_code=500, detail="계정 정보를 변경하지 못했습니다.") from exc
+        raise_database_http_error(exc, default_detail="계정 정보를 변경하지 못했습니다.")
     finally:
         if cursor:
             cursor.close()
@@ -173,7 +174,7 @@ def update_password(payload: PasswordUpdateRequest, request: Request):
         if conn:
             conn.rollback()
         logger.exception("Account password update failed.")
-        raise HTTPException(status_code=500, detail="비밀번호를 변경하지 못했습니다.") from exc
+        raise_database_http_error(exc, default_detail="비밀번호를 변경하지 못했습니다.")
     finally:
         if cursor:
             cursor.close()

@@ -88,8 +88,11 @@ router = APIRouter()
 
 - 업무 데이터에서 현재 사용자가 필요하면 `get_request_user_id(request)`를 사용합니다.
 - 관리자 기능은 라우터 진입 시 서버 역할 검증을 수행합니다.
-- 조회와 DML 모두 시스템 DB 커넥션을 명시적으로 얻고 `finally`에서 커서와 커넥션을 닫습니다.
-- `HTTPException`은 그대로 다시 raise하고, 예상하지 못한 예외는 로깅한 뒤 일관된 오류 응답으로 변환합니다.
+- 조회와 DML 모두 `conn = None`, `cursor = None`으로 초기화하고 `try` 내부에서 시스템 DB 커넥션과 커서를 얻습니다. `finally`에서는 생성된 커서와 커넥션만 닫습니다.
+- 트랜잭션 소유자는 업무 단위의 라우터 또는 서비스 함수입니다. 여러 SQL로 구성된 저장은 같은 커넥션에서 실행하고 업무가 모두 성공한 마지막 지점에서 한 번만 `commit()`합니다.
+- `HTTPException`과 예상하지 못한 예외 모두 활성 트랜잭션을 `rollback()`한 뒤 처리합니다. 예상하지 못한 예외는 서버 로그에 원인을 남기고 Oracle 원문을 포함하지 않은 일관된 오류 응답으로 변환합니다.
+- `execute_query(..., is_dml=True)`는 그 호출 하나가 독립 트랜잭션인 경우에만 사용합니다. 여러 SQL을 하나의 업무 트랜잭션으로 묶을 때는 사용하지 않으며 라우터 또는 서비스가 직접 commit/rollback을 소유합니다.
+- Oracle 오류 응답은 `backend/database_errors.py`의 공통 분류를 사용합니다. 명시한 제약조건 충돌만 409, 스키마 누락과 연결·풀 장애는 503, 그 밖의 예상하지 못한 DB 오류는 500으로 처리합니다.
 - 성공 응답은 기존 `{ "status": "success", "data": ... }` 계약을 유지합니다.
 
 정적 `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, PL/SQL block은 Python 파일에 새로 작성하지 않고 `database/*.sql`로 분리합니다.
@@ -195,6 +198,7 @@ CSS를 수정할 때는 새 override를 계속 추가하지 않습니다. 기존
 
 최소 검증:
 
+- `.\venv\Scripts\python.exe -m unittest discover -s backend/tests -p "test_*.py"`
 - `GET /api/health`
 - 로그인, 로그아웃, 만료·폐기된 세션 거부
 - 최초 관리자 초기화와 일반 사용자 승인

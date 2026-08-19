@@ -6,6 +6,11 @@
         confirmed: { pageCode: "project-detail-editor", title: "프로젝트 상세 편집" }
     };
     const MONTH_COUNT = 12;
+    const GENDER_LABELS = { MALE: "남성", FEMALE: "여성", OTHER: "기타", UNDISCLOSED: "미공개" };
+    const TECHNICAL_GRADE_LABELS = {
+        PROFESSIONAL_ENGINEER: "기술사", SPECIAL: "특급", ADVANCED: "고급",
+        INTERMEDIATE: "중급", BEGINNER: "초급"
+    };
 
     let root = null;
     let controller = null;
@@ -30,6 +35,7 @@
     let quickMonthDragHandle = "";
     let quickMonthlyAllocations = new Map();
     let quickDialogDrag = null;
+    let workerDetailDrag = null;
     let editDrafts = [];
     let editDraftSequence = 0;
     let editOrders = new Map();
@@ -65,6 +71,105 @@
 
     function dateText(value) {
         return String(value || "").slice(0, 10);
+    }
+
+    function calculatedAge(birthDate) {
+        const normalized = dateText(birthDate);
+        if (!normalized) return null;
+        const [year, month, day] = normalized.split("-").map(Number);
+        const today = new Date();
+        let age = today.getFullYear() - year;
+        if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1;
+        return age >= 0 ? age : null;
+    }
+
+    function workerPhoto(worker, detail = false) {
+        const frame = element("div", detail ? "workforce-management-worker-photo is-detail" : "workforce-management-worker-photo");
+        const placeholder = element("span", "", "사진 없음");
+        frame.appendChild(placeholder);
+        const userId = pick(worker, "userId", "USER_ID");
+        const hasPhoto = Boolean(pick(worker, "photoFileName", "PHOTO_FILE_NAME"));
+        if (!userId || !hasPhoto) return frame;
+        const image = element("img");
+        image.alt = `${pick(worker, "employeeName", "EMPLOYEE_NAME") || "인력"} 프로필 사진`;
+        image.src = `/api/admin/users/${encodeURIComponent(userId)}/photo?v=${encodeURIComponent(pick(worker, "photoUpdatedAt", "PHOTO_UPDATED_AT") || "")}`;
+        image.addEventListener("load", () => { placeholder.hidden = true; });
+        image.addEventListener("error", () => { image.remove(); placeholder.hidden = false; });
+        frame.prepend(image);
+        return frame;
+    }
+
+    function appendWorkerDetailField(list, label, value) {
+        const group = element("div");
+        group.append(element("dt", "", label), element("dd", "", value === null || value === undefined || value === "" ? "-" : String(value)));
+        list.appendChild(group);
+    }
+
+    function openWorkerDetail(worker) {
+        const dialog = query("#workforceManagementWorkerDetailDialog");
+        const name = pick(worker, "employeeName", "EMPLOYEE_NAME") || "이름 미정";
+        const genderCode = String(pick(worker, "genderCode", "GENDER_CODE") || "").toUpperCase();
+        const gradeCode = String(pick(worker, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase();
+        const isInternal = String(worker.workerKey || "").startsWith("USER:");
+        const birthDate = pick(worker, "birthDate", "BIRTH_DATE");
+        const age = pick(worker, "ageYears", "AGE_YEARS") ?? calculatedAge(birthDate);
+        query("#workforceManagementWorkerDetailTitle").textContent = `${name} 상세정보`;
+        query("#workforceManagementWorkerDetailSubtitle").textContent = [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음";
+        query("#workforceManagementWorkerDetailPhoto").replaceChildren(workerPhoto(worker, true));
+        const fields = query("#workforceManagementWorkerDetailFields");
+        fields.replaceChildren();
+        appendWorkerDetailField(fields, "구분", isInternal ? "내부 임직원" : "협력업체 인력");
+        appendWorkerDetailField(fields, "사번", pick(worker, "employeeNo", "EMPLOYEE_NO"));
+        appendWorkerDetailField(fields, "성별", GENDER_LABELS[genderCode]);
+        appendWorkerDetailField(fields, "만 나이", age === null ? null : `${age}세`);
+        appendWorkerDetailField(fields, "기술등급", TECHNICAL_GRADE_LABELS[gradeCode]);
+        appendWorkerDetailField(fields, "경력월수", pick(worker, "careerMonths", "CAREER_MONTHS") === null || pick(worker, "careerMonths", "CAREER_MONTHS") === undefined ? null : `${pick(worker, "careerMonths", "CAREER_MONTHS")}개월`);
+        appendWorkerDetailField(fields, "부서", pick(worker, "departmentName", "DEPARTMENT_NAME"));
+        appendWorkerDetailField(fields, "직급", pick(worker, "positionName", "POSITION_NAME"));
+        appendWorkerDetailField(fields, "직책", pick(worker, "jobTitle", "JOB_TITLE"));
+        appendWorkerDetailField(fields, "이메일", pick(worker, "email", "EMAIL"));
+        appendWorkerDetailField(fields, "휴대전화", pick(worker, "mobilePhone", "MOBILE_PHONE"));
+        if (isInternal) appendWorkerDetailField(fields, "근무지", pick(worker, "workLocation", "WORK_LOCATION"));
+        dialog.dataset.dragX = "0";
+        dialog.dataset.dragY = "0";
+        dialog.style.setProperty("--workforce-worker-detail-x", "0px");
+        dialog.style.setProperty("--workforce-worker-detail-y", "0px");
+        dialog.showModal();
+    }
+
+    function closeWorkerDetail() {
+        query("#workforceManagementWorkerDetailDialog")?.close();
+        workerDetailDrag = null;
+    }
+
+    function handleWorkerDetailPointerDown(event) {
+        if (event.target.closest("button, input, select, textarea, a")) return;
+        const dialog = query("#workforceManagementWorkerDetailDialog");
+        workerDetailDrag = {
+            startX: event.clientX, startY: event.clientY,
+            baseX: Number(dialog.dataset.dragX || 0), baseY: Number(dialog.dataset.dragY || 0)
+        };
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        event.currentTarget.classList.add("is-dragging");
+        event.preventDefault();
+    }
+
+    function handleWorkerDetailPointerMove(event) {
+        if (!workerDetailDrag) return;
+        const dialog = query("#workforceManagementWorkerDetailDialog");
+        const nextX = workerDetailDrag.baseX + event.clientX - workerDetailDrag.startX;
+        const nextY = workerDetailDrag.baseY + event.clientY - workerDetailDrag.startY;
+        dialog.dataset.dragX = String(nextX);
+        dialog.dataset.dragY = String(nextY);
+        dialog.style.setProperty("--workforce-worker-detail-x", `${nextX}px`);
+        dialog.style.setProperty("--workforce-worker-detail-y", `${nextY}px`);
+    }
+
+    function handleWorkerDetailPointerUp(event) {
+        if (!workerDetailDrag) return;
+        workerDetailDrag = null;
+        event.currentTarget.classList.remove("is-dragging");
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
     }
 
     function lastDateOfMonth(month) {
@@ -705,8 +810,13 @@
             }
             const top = element("div", "workforce-management-worker-top");
             const copy = element("div");
-            copy.append(
+            const nameRow = element("div", "workforce-management-worker-name-row");
+            nameRow.append(
                 element("strong", "", pick(worker, "employeeName", "EMPLOYEE_NAME") || "이름 미정"),
+                workerPhoto(worker)
+            );
+            copy.append(
+                nameRow,
                 element("span", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME"), pick(worker, "positionName", "POSITION_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음")
             );
             const status = element("span", `workforce-management-worker-status${worker.overlapCount ? " is-overlap" : ""}`, worker.overlapCount ? `중복 ${worker.overlapCount}개월` : `가용 ${worker.availableMonths}개월`);
@@ -721,7 +831,11 @@
                 months.appendChild(cell);
             });
             const summary = element("small", "workforce-management-worker-summary", `최고 ${fixed(worker.peakMm)} M/M · 1.0 미만 ${worker.availableMonths}개월`);
-            card.append(top, months, summary);
+            const detailButton = element("button", "workforce-management-worker-detail-button", "상세");
+            detailButton.type = "button";
+            detailButton.dataset.workerDetail = worker.workerKey;
+            detailButton.draggable = false;
+            card.append(top, months, summary, detailButton);
             if (companyWarnings.length) {
                 const warning = element("small", "workforce-management-worker-company-warning", `⚠ 배치 불가 ${companyWarnings.length}개 프로젝트`);
                 warning.title = companyWarnings.map((item) => item.reason).join("\n");
@@ -946,11 +1060,23 @@
             workerCell.dataset.workerKey = worker.workerKey;
             workerCell.draggable = editMode;
             workerCell.style.gridRow = `1 / span ${rowCount}`;
-            workerCell.append(
+            const identity = element("div", "workforce-management-worker-row-identity");
+            const nameRow = element("div", "workforce-management-worker-row-name");
+            nameRow.append(
                 element("strong", "", pick(worker, "employeeName", "EMPLOYEE_NAME") || "이름 미정"),
-                element("span", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음"),
-                element("small", "", projects.length ? `${projects.length}개 프로젝트` : "가용")
+                workerPhoto(worker)
             );
+            identity.append(
+                nameRow,
+                element("span", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음")
+            );
+            const footer = element("div", "workforce-management-worker-row-footer");
+            const detailButton = element("button", "workforce-management-worker-detail-button", "상세");
+            detailButton.type = "button";
+            detailButton.dataset.workerDetail = worker.workerKey;
+            detailButton.draggable = false;
+            footer.append(element("small", "", projects.length ? `${projects.length}개 프로젝트` : "가용"), detailButton);
+            workerCell.append(identity, footer);
             row.appendChild(workerCell);
             timelineMonths().forEach((month, index) => {
                 const cell = element("div", "workforce-management-worker-month-cell workforce-management-worker-row-drop");
@@ -2411,7 +2537,7 @@
 
     function handleBoardDragStart(event) {
         if (!editMode || mutationBusy) return;
-        if (event.target.closest("[data-remove-assignment]")) {
+        if (event.target.closest("[data-remove-assignment], [data-worker-detail]")) {
             event.preventDefault();
             return;
         }
@@ -2644,6 +2770,14 @@
             ).catch((error) => Common.ui.toast(error.message || "투입인력 배치 순서를 저장하지 못했습니다.", "error"));
         }, { signal: controller.signal });
         root.addEventListener("click", (event) => {
+            const workerDetail = event.target.closest("[data-worker-detail]");
+            if (workerDetail) {
+                event.preventDefault();
+                event.stopPropagation();
+                const worker = workerByKey(workerDetail.dataset.workerDetail);
+                if (worker) openWorkerDetail(worker);
+                return;
+            }
             const remove = event.target.closest("[data-remove-assignment]");
             if (remove) {
                 event.preventDefault();
@@ -2680,6 +2814,16 @@
         root.querySelectorAll("[data-workforce-quick-close]").forEach((button) => {
             button.addEventListener("click", closeQuickDialog, { signal: controller.signal });
         });
+        root.querySelectorAll("[data-workforce-worker-detail-close]").forEach((button) => {
+            button.addEventListener("click", closeWorkerDetail, { signal: controller.signal });
+        });
+        const workerDetailDialog = query("#workforceManagementWorkerDetailDialog");
+        const workerDetailHeader = query("[data-workforce-worker-detail-drag-handle]");
+        workerDetailHeader.addEventListener("pointerdown", handleWorkerDetailPointerDown, { signal: controller.signal });
+        workerDetailHeader.addEventListener("pointermove", handleWorkerDetailPointerMove, { signal: controller.signal });
+        workerDetailHeader.addEventListener("pointerup", handleWorkerDetailPointerUp, { signal: controller.signal });
+        workerDetailHeader.addEventListener("pointercancel", handleWorkerDetailPointerUp, { signal: controller.signal });
+        workerDetailDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeWorkerDetail(); }, { signal: controller.signal });
         const quickDialogHeader = query("#workforceManagementQuickDialog .dialog-header");
         quickDialogHeader.addEventListener("pointerdown", handleQuickDialogPointerDown, { signal: controller.signal });
         quickDialogHeader.addEventListener("pointermove", handleQuickDialogPointerMove, { signal: controller.signal });
@@ -2773,7 +2917,9 @@
         root.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             if (query("#workforceManagementQuickDialog")?.open) return;
-            if (!query("#workforceManagementEditor")?.hidden) {
+            if (query("#workforceManagementWorkerDetailDialog")?.open) {
+                closeWorkerDetail();
+            } else if (!query("#workforceManagementEditor")?.hidden) {
                 releaseEditor().catch((error) => Common.ui.toast(error.message, "error"));
             } else if (maximized) {
                 setMaximized(false);
@@ -2855,6 +3001,7 @@
             requestSequence += 1;
             if (editorEntry) await releaseEditor({ confirmDiscard: false, refresh: false });
             if (query("#workforceManagementQuickDialog")?.open) closeQuickDialog();
+            if (query("#workforceManagementWorkerDetailDialog")?.open) closeWorkerDetail();
             if (maximized) setMaximized(false);
             controller = null;
             pageContext = null;
@@ -2877,6 +3024,7 @@
             quickMonthDragHandle = "";
             quickMonthlyAllocations = new Map();
             quickDialogDrag = null;
+            workerDetailDrag = null;
             editDrafts = [];
             editDraftSequence = 0;
             editOrders = new Map();

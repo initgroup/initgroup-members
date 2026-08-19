@@ -287,6 +287,7 @@ Oracle `NUMBER(18)` 금액은 브라우저의 JSON number 안전 범위를 넘�
 
 ```powershell
 .\scripts\validate-source.ps1
+.\venv\Scripts\python.exe -m unittest discover -s backend/tests -p "test_*.py"
 .\venv\Scripts\python.exe -c "import main; print(main.app.title)"
 .\scripts\run-server.ps1
 ```

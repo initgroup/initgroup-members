@@ -13,6 +13,10 @@
     let userTotal = 0;
     let userTotalPages = 1;
     const EMPLOYMENT_STATUS_LABELS = { ACTIVE: "재직", LEAVE: "휴직", RETIRED: "퇴직" };
+    const TECHNICAL_GRADE_LABELS = {
+        PROFESSIONAL_ENGINEER: "기술사", SPECIAL: "특급", ADVANCED: "고급",
+        INTERMEDIATE: "중급", BEGINNER: "초급"
+    };
 
     function query(selector) {
         return root?.querySelector(selector) || null;
@@ -105,6 +109,8 @@
         setValue("#userDepartmentName", value(row, "departmentName", "DEPARTMENT_NAME"));
         setValue("#userPositionName", value(row, "positionName", "POSITION_NAME"));
         setValue("#userJobTitle", value(row, "jobTitle", "JOB_TITLE"));
+        setValue("#userTechnicalGradeCode", String(value(row, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase());
+        setValue("#userCareerMonths", value(row, "careerMonths", "CAREER_MONTHS"));
         setValue("#userWorkLocation", value(row, "workLocation", "WORK_LOCATION"));
         setValue("#userMobilePhone", value(row, "mobilePhone", "MOBILE_PHONE"));
         setValue("#userOfficePhone", value(row, "officePhone", "OFFICE_PHONE"));
@@ -147,7 +153,7 @@
         if (!users.length) {
             const row = Common.dom.element("tr");
             const empty = cell("조회된 임직원이 없습니다.");
-            empty.colSpan = 12;
+            empty.colSpan = 14;
             empty.style.textAlign = "center";
             row.appendChild(empty);
             body.appendChild(row);
@@ -173,6 +179,8 @@
                 cell(value(row, "departmentName", "DEPARTMENT_NAME") || "-"),
                 cell(value(row, "positionName", "POSITION_NAME") || "-"),
                 cell(value(row, "jobTitle", "JOB_TITLE") || "-"),
+                cell(TECHNICAL_GRADE_LABELS[String(value(row, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase()] || "-"),
+                cell(value(row, "careerMonths", "CAREER_MONTHS") ?? "-"),
                 cell(EMPLOYMENT_STATUS_LABELS[employmentStatus] || employmentStatus),
                 cell(value(row, "email", "EMAIL") || "-"),
                 cell(role === "ADMIN" ? "관리자" : "사용자"),
@@ -288,6 +296,8 @@
             mobilePhone: query("#userMobilePhone").value.trim() || null,
             officePhone: query("#userOfficePhone").value.trim() || null,
             hrNote: query("#userHrNote").value.trim() || null
+            , technicalGradeCode: query("#userTechnicalGradeCode").value || null
+            , careerMonths: query("#userCareerMonths").value === "" ? null : Number(query("#userCareerMonths").value)
         };
     }
 

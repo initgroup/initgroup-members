@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
+from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.passwords import hash_password
 
@@ -29,12 +30,28 @@ _GENDER_CODES = {"MALE", "FEMALE", "OTHER", "UNDISCLOSED"}
 _BIRTH_CALENDAR_CODES = {"SOLAR", "LUNAR"}
 _EMPLOYMENT_STATUS_CODES = {"ACTIVE", "LEAVE", "RETIRED"}
 _EMPLOYMENT_TYPE_CODES = {"REGULAR", "CONTRACT", "EXECUTIVE", "INTERN", "DISPATCH", "OTHER"}
+_TECHNICAL_GRADE_CODES = {"PROFESSIONAL_ENGINEER", "SPECIAL", "ADVANCED", "INTERMEDIATE", "BEGINNER"}
 _PHOTO_TYPES = {
     "image/jpeg": (b"\xff\xd8\xff",),
     "image/png": (b"\x89PNG\r\n\x1a\n",),
     "image/gif": (b"GIF87a", b"GIF89a"),
     "image/webp": (b"RIFF",),
 }
+_ADMIN_USER_PROFILE_BINDS = {
+    "employeeNo", "genderCode", "birthDate", "birthCalendarCode", "hireDate",
+    "retirementDate", "employmentStatusCode", "employmentTypeCode", "departmentName",
+    "positionName", "jobTitle", "workLocation", "mobilePhone", "officePhone", "hrNote",
+    "technicalGradeCode", "careerMonths",
+}
+_ADMIN_USER_BASE_BINDS = {"loginId", "userName", "email", "roleCode", "useYn"}
+SqlLoader.register_bind_contract(
+    "ADMIN_USER_INSERT",
+    _ADMIN_USER_BASE_BINDS | _ADMIN_USER_PROFILE_BINDS | {"passwordHash"},
+)
+SqlLoader.register_bind_contract(
+    "ADMIN_USER_UPDATE",
+    _ADMIN_USER_BASE_BINDS | _ADMIN_USER_PROFILE_BINDS | {"userId"},
+)
 
 
 class EmployeeProfileRequest(BaseModel):
@@ -53,6 +70,8 @@ class EmployeeProfileRequest(BaseModel):
     mobilePhone: str | None = Field(default=None, max_length=50)
     officePhone: str | None = Field(default=None, max_length=50)
     hrNote: str | None = Field(default=None, max_length=2000)
+    technicalGradeCode: str | None = Field(default=None, max_length=30)
+    careerMonths: int | None = Field(default=None, ge=0, le=1200)
 
 
 class UserUpdateRequest(EmployeeProfileRequest):
@@ -92,12 +111,6 @@ def _rows(cursor) -> list[dict[str, Any]]:
         {_camel_key(column): _serialize(value) for column, value in zip(columns, row)}
         for row in cursor.fetchall()
     ]
-
-
-def _oracle_error_code(exc: Exception) -> int | None:
-    if not getattr(exc, "args", None):
-        return None
-    return getattr(exc.args[0], "code", None)
 
 
 def _normalize_use_yn(value: str, *, allow_all: bool = False) -> str:
@@ -193,6 +206,12 @@ def _profile_values(payload: EmployeeProfileRequest) -> dict[str, Any]:
         "mobilePhone": _optional_text(payload.mobilePhone),
         "officePhone": _optional_text(payload.officePhone),
         "hrNote": _optional_text(payload.hrNote),
+        "technicalGradeCode": _optional_code(
+            payload.technicalGradeCode,
+            _TECHNICAL_GRADE_CODES,
+            "technicalGradeCode",
+        ),
+        "careerMonths": payload.careerMonths,
     }
 
 
@@ -293,7 +312,7 @@ def create_user(payload: UserCreateRequest):
         if conn:
             conn.rollback()
         logger.exception("Administrator user creation failed.")
-        raise HTTPException(status_code=500, detail="User could not be created.") from exc
+        raise_database_http_error(exc, default_detail="User could not be created.")
     finally:
         if cursor:
             cursor.close()
@@ -445,7 +464,7 @@ def update_user(user_id: int, payload: UserUpdateRequest, request: Request):
         if conn:
             conn.rollback()
         logger.exception("Administrator user update failed.")
-        raise HTTPException(status_code=500, detail="User could not be updated.") from exc
+        raise_database_http_error(exc, default_detail="User could not be updated.")
     finally:
         if cursor:
             cursor.close()
@@ -495,7 +514,7 @@ def _store_user_photo(
         if conn:
             conn.rollback()
         logger.exception("Employee profile photo upload failed.")
-        raise HTTPException(status_code=500, detail="Profile photo could not be uploaded.") from exc
+        raise_database_http_error(exc, default_detail="Profile photo could not be uploaded.")
     finally:
         if cursor:
             cursor.close()
@@ -575,7 +594,7 @@ def delete_user_photo(user_id: int):
         if conn:
             conn.rollback()
         logger.exception("Employee profile photo delete failed.")
-        raise HTTPException(status_code=500, detail="Profile photo could not be deleted.") from exc
+        raise_database_http_error(exc, default_detail="Profile photo could not be deleted.")
     finally:
         if cursor:
             cursor.close()
@@ -632,13 +651,14 @@ def delete_user(user_id: int, request: Request):
     except Exception as exc:
         if conn:
             conn.rollback()
-        if _oracle_error_code(exc) == 2292:
-            raise HTTPException(
-                status_code=409,
-                detail="User is referenced by business history and cannot be deleted. Disable the user instead.",
-            ) from exc
         logger.exception("Administrator user deletion failed.")
-        raise HTTPException(status_code=500, detail="User could not be deleted.") from exc
+        raise_database_http_error(
+            exc,
+            default_detail="User could not be deleted.",
+            conflict_details={
+                2292: "User is referenced by business history and cannot be deleted. Disable the user instead."
+            },
+        )
     finally:
         if cursor:
             cursor.close()
@@ -692,7 +712,7 @@ def reset_password(user_id: int):
         if conn:
             conn.rollback()
         logger.exception("Administrator password reset failed.")
-        raise HTTPException(status_code=500, detail="Password could not be reset.") from exc
+        raise_database_http_error(exc, default_detail="Password could not be reset.")
     finally:
         if cursor:
             cursor.close()

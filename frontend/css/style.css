@@ -2458,7 +2458,7 @@ body.auth-screen .page-host {
 }
 
 .admin-user-table {
-    min-width: 1320px;
+    min-width: 1500px;
 }
 
 .admin-user-table tbody tr[data-user-id] {
@@ -2571,6 +2571,10 @@ body.auth-screen .page-host {
     min-width: 860px;
 }
 
+.company-employee-table {
+    min-width: 1280px;
+}
+
 .company-management-table tbody tr[data-company-id],
 .company-employee-table tbody tr[data-employee-id],
 .company-history-table tbody tr[data-history-id] {
@@ -2578,9 +2582,15 @@ body.auth-screen .page-host {
 }
 
 .company-management-table tbody tr[data-company-id]:hover,
+.company-management-table tbody tr[data-company-id]:focus-visible,
 .company-employee-table tbody tr[data-employee-id]:hover,
 .company-history-table tbody tr[data-history-id]:hover {
     background: var(--color-primary-soft);
+}
+
+.company-management-table tbody tr[data-company-id]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
 }
 
 .company-employee-form,
@@ -5191,6 +5201,47 @@ html.has-workforce-board-maximized {
     gap: 8px;
 }
 
+.workforce-management-worker-top > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.workforce-management-worker-name-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.workforce-management-worker-photo {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    overflow: hidden;
+    border: 1px solid #b9c6d5;
+    border-radius: 7px;
+    color: #7b8ba0;
+    background: #f8fafc;
+    place-items: center;
+}
+
+.workforce-management-worker-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.workforce-management-worker-photo > span {
+    margin: 0;
+    padding: 2px;
+    color: #7b8ba0;
+    font-size: 0.57rem;
+    line-height: 1.15;
+    text-align: center;
+}
+
 .workforce-management-worker-top strong,
 .workforce-management-worker-top span {
     display: block;
@@ -5260,6 +5311,114 @@ html.has-workforce-board-maximized {
     margin-top: 6px;
     color: var(--color-muted);
     font-size: 0.68rem;
+}
+
+.workforce-management-worker-detail-button {
+    display: block;
+    margin: 7px 0 0 auto;
+    padding: 3px 8px;
+    border: 1px solid #a9bdd2;
+    border-radius: 6px;
+    color: var(--color-primary-dark);
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+.workforce-management-worker-detail-button:hover,
+.workforce-management-worker-detail-button:focus-visible {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+    outline: none;
+}
+
+.workforce-management-worker-detail-dialog {
+    width: min(620px, calc(100vw - 28px));
+    max-height: calc(100vh - 28px);
+    padding: 0;
+    overflow: hidden;
+    transform: translate(var(--workforce-worker-detail-x, 0px), var(--workforce-worker-detail-y, 0px));
+}
+
+.workforce-management-worker-detail-dialog .dialog-header {
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+}
+
+.workforce-management-worker-detail-dialog .dialog-header.is-dragging {
+    cursor: grabbing;
+}
+
+.workforce-management-worker-detail-dialog .dialog-header p:last-child {
+    margin: 4px 0 0;
+    color: var(--color-muted);
+    font-size: 0.72rem;
+}
+
+.workforce-management-worker-detail-body {
+    display: grid;
+    max-height: calc(100vh - 190px);
+    padding: 18px;
+    overflow: auto;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: start;
+    gap: 18px;
+}
+
+.workforce-management-worker-detail-photo .workforce-management-worker-photo.is-detail {
+    width: 112px;
+    height: 140px;
+    border-radius: 10px;
+}
+
+.workforce-management-worker-detail-photo .workforce-management-worker-photo.is-detail > span {
+    font-size: 0.72rem;
+}
+
+.workforce-management-worker-detail-fields {
+    display: grid;
+    margin: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.workforce-management-worker-detail-fields > div {
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.workforce-management-worker-detail-fields dt {
+    color: var(--color-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+.workforce-management-worker-detail-fields dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+    font-size: 0.79rem;
+    font-weight: 700;
+}
+
+@media (max-width: 560px) {
+    .workforce-management-worker-detail-body {
+        grid-template-columns: 1fr;
+    }
+
+    .workforce-management-worker-detail-photo {
+        display: flex;
+        justify-content: center;
+    }
+
+    .workforce-management-worker-detail-fields {
+        grid-template-columns: 1fr;
+    }
 }
 
 .workforce-management-timeline-heading {
@@ -5437,6 +5596,50 @@ html.has-workforce-board-maximized {
     justify-content: center;
     border-right: 1px solid var(--color-border);
     background: #fff;
+}
+
+.workforce-management-worker-row-identity {
+    min-width: 0;
+}
+
+.workforce-management-worker-row-name {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.workforce-management-worker-row-name strong {
+    min-width: 0;
+}
+
+.workforce-management-worker-row-info .workforce-management-worker-photo {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+}
+
+.workforce-management-worker-row-info .workforce-management-worker-photo > span {
+    margin: 0;
+    padding: 2px;
+    color: #7b8ba0;
+    font-size: 0.57rem;
+    line-height: 1.15;
+    white-space: normal;
+    text-align: center;
+}
+
+.workforce-management-worker-row-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.workforce-management-worker-row-footer .workforce-management-worker-detail-button {
+    display: inline-block;
+    margin-top: 6px;
 }
 
 .workforce-management-worker-row-info[draggable="true"] {

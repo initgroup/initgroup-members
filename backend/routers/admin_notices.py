@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
+from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 
 
@@ -184,7 +185,7 @@ def _store_attachment(
         if conn:
             conn.rollback()
         logger.exception("Notice attachment upload failed.")
-        raise HTTPException(status_code=500, detail="Attachment could not be uploaded.") from exc
+        raise_database_http_error(exc, default_detail="Attachment could not be uploaded.")
     finally:
         if cursor:
             cursor.close()
@@ -271,7 +272,7 @@ def create_notice(payload: NoticeWriteRequest, request: Request):
         if conn:
             conn.rollback()
         logger.exception("Notice creation failed.")
-        raise HTTPException(status_code=500, detail="Notice could not be created.") from exc
+        raise_database_http_error(exc, default_detail="Notice could not be created.")
     finally:
         if cursor:
             cursor.close()
@@ -306,7 +307,7 @@ def update_notice(notice_id: int, payload: NoticeWriteRequest, request: Request)
         if conn:
             conn.rollback()
         logger.exception("Notice update failed.")
-        raise HTTPException(status_code=500, detail="Notice could not be updated.") from exc
+        raise_database_http_error(exc, default_detail="Notice could not be updated.")
     finally:
         if cursor:
             cursor.close()
@@ -334,7 +335,7 @@ def delete_notice(notice_id: int):
         if conn:
             conn.rollback()
         logger.exception("Notice deletion failed.")
-        raise HTTPException(status_code=500, detail="Notice could not be deleted.") from exc
+        raise_database_http_error(exc, default_detail="Notice could not be deleted.")
     finally:
         if cursor:
             cursor.close()
@@ -439,7 +440,7 @@ def delete_attachment(file_id: int):
         if conn:
             conn.rollback()
         logger.exception("Notice attachment deletion failed.")
-        raise HTTPException(status_code=500, detail="Attachment could not be deleted.") from exc
+        raise_database_http_error(exc, default_detail="Attachment could not be deleted.")
     finally:
         if cursor:
             cursor.close()

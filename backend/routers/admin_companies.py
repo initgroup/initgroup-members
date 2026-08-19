@@ -11,12 +11,28 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
+from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin_role)])
 _HISTORY_TYPES = {"ESTABLISHED", "NAME_CHANGE", "ADDRESS_CHANGE", "CERTIFICATION", "OTHER"}
+_GENDER_CODES = {"MALE", "FEMALE", "OTHER", "UNDISCLOSED"}
+_TECHNICAL_GRADE_CODES = {"PROFESSIONAL_ENGINEER", "SPECIAL", "ADVANCED", "INTERMEDIATE", "BEGINNER"}
+_EMPLOYEE_WRITE_BINDS = {
+    "companyId", "employeeNo", "employeeName", "departmentName", "positionName",
+    "jobTitle", "email", "mobilePhone", "joinDate", "leaveDate", "useYn", "note",
+    "genderCode", "ageYears", "technicalGradeCode", "careerMonths", "userId",
+}
+SqlLoader.register_bind_contract(
+    "COMPANY_EMPLOYEE_INSERT",
+    _EMPLOYEE_WRITE_BINDS | {"companyEmployeeIdOut"},
+)
+SqlLoader.register_bind_contract(
+    "COMPANY_EMPLOYEE_UPDATE",
+    _EMPLOYEE_WRITE_BINDS | {"companyEmployeeId", "companyTypeCode"},
+)
 
 
 class CompanyWriteRequest(BaseModel):
@@ -47,6 +63,10 @@ class EmployeeWriteRequest(BaseModel):
     leaveDate: date | None = None
     useYn: str = Field(default="Y", max_length=1)
     note: str = Field(default="", max_length=2000)
+    genderCode: str | None = Field(default=None, max_length=20)
+    ageYears: int | None = Field(default=None, ge=0, le=150)
+    technicalGradeCode: str | None = Field(default=None, max_length=30)
+    careerMonths: int | None = Field(default=None, ge=0, le=1200)
     model_config = ConfigDict(extra="forbid")
 
 
@@ -80,16 +100,31 @@ def _rows(cursor) -> list[dict[str, Any]]:
 
 
 def _raise_company_read_error(exc: Exception) -> None:
-    oracle_code = getattr(exc.args[0], "code", None) if getattr(exc, "args", None) else None
-    if oracle_code in {904, 942}:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "회사 관리 스키마가 설치되지 않았습니다. "
-                "database/INIT_SYSTEM_ALT.sql을 시스템 DB에 적용해 주세요."
-            ),
-        ) from exc
-    raise HTTPException(status_code=500, detail="회사 정보를 조회하지 못했습니다.") from exc
+    raise_database_http_error(
+        exc,
+        default_detail="회사 정보를 조회하지 못했습니다.",
+        schema_detail=(
+            "회사 관리 스키마가 설치되지 않았습니다. "
+            "database/INIT_SYSTEM_ALT.sql을 시스템 DB에 적용해 주세요."
+        ),
+    )
+
+
+def _raise_company_write_error(
+    exc: Exception,
+    *,
+    default_detail: str,
+    conflict_details: dict[int, str] | None = None,
+) -> None:
+    raise_database_http_error(
+        exc,
+        default_detail=default_detail,
+        conflict_details=conflict_details,
+        schema_detail=(
+            "회사 관리 스키마가 설치되지 않았습니다. "
+            "database/INIT_SYSTEM_ALT.sql을 시스템 DB에 적용해 주세요."
+        ),
+    )
 
 
 def _optional(value: str) -> str | None:
@@ -101,6 +136,15 @@ def _use_yn(value: str) -> str:
     normalized = str(value or "").strip().upper()
     if normalized not in {"Y", "N"}:
         raise HTTPException(status_code=400, detail="사용 여부는 Y 또는 N이어야 합니다.")
+    return normalized
+
+
+def _optional_code(value: str | None, allowed: set[str], field_name: str) -> str | None:
+    normalized = str(value or "").strip().upper()
+    if not normalized:
+        return None
+    if normalized not in allowed:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 {field_name} 값입니다.")
     return normalized
 
 
@@ -144,6 +188,14 @@ def _employee_params(payload: EmployeeWriteRequest, user_id: int) -> dict[str, A
         "leaveDate": payload.leaveDate,
         "useYn": _use_yn(payload.useYn),
         "note": _optional(payload.note),
+        "genderCode": _optional_code(payload.genderCode, _GENDER_CODES, "genderCode"),
+        "ageYears": payload.ageYears,
+        "technicalGradeCode": _optional_code(
+            payload.technicalGradeCode,
+            _TECHNICAL_GRADE_CODES,
+            "technicalGradeCode",
+        ),
+        "careerMonths": payload.careerMonths,
         "userId": user_id,
     }
 
@@ -192,9 +244,11 @@ def _save_employee(
     payload: EmployeeWriteRequest,
     request: Request,
 ) -> dict[str, Any]:
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         _ensure_company(cursor, company_id, company_type)
         params = {**_employee_params(payload, get_request_user_id(request)), "companyId": company_id}
         if employee_id:
@@ -215,20 +269,30 @@ def _save_employee(
         conn.commit()
         return {"status": "success", "data": {"companyEmployeeId": employee_id}}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Company employee save failed.")
-        raise HTTPException(status_code=409, detail="직원 정보를 저장하지 못했습니다. 사번 중복 여부를 확인해 주세요.") from exc
+        _raise_company_write_error(
+            exc,
+            default_detail="직원 정보를 저장하지 못했습니다.",
+            conflict_details={1: "직원 정보를 저장하지 못했습니다. 사번 중복 여부를 확인해 주세요."},
+        )
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 def _delete_employee(company_id: int, company_type: str, employee_id: int) -> dict[str, str]:
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(
             SqlLoader.get_sql("COMPANY_EMPLOYEE_DELETE"),
             {"companyId": company_id, "companyTypeCode": company_type, "companyEmployeeId": employee_id},
@@ -238,56 +302,80 @@ def _delete_employee(company_id: int, company_type: str, employee_id: int) -> di
         conn.commit()
         return {"status": "success"}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Company employee deletion failed.")
-        raise HTTPException(status_code=409, detail="프로젝트 투입에 연결된 직원은 삭제할 수 없습니다.") from exc
+        _raise_company_write_error(
+            exc,
+            default_detail="직원 정보를 삭제하지 못했습니다.",
+            conflict_details={2292: "프로젝트 투입에 연결된 직원은 삭제할 수 없습니다."},
+        )
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.get("/partners")
 def list_partners():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         return {"status": "success", "data": {"companies": _company_list(cursor, "PARTNER")}}
     except Exception as exc:
         logger.exception("Partner company list query failed.")
         _raise_company_read_error(exc)
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.post("/partners")
 def create_partner(payload: CompanyWriteRequest, request: Request):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         company_id = _insert_company(cursor, _company_params(payload, "PARTNER", get_request_user_id(request)))
         conn.commit()
         return {"status": "success", "data": {"companyId": company_id}}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Partner company creation failed.")
-        raise HTTPException(status_code=409, detail="협력업체를 저장하지 못했습니다. 회사명 또는 사업자번호를 확인해 주세요.") from exc
+        _raise_company_write_error(
+            exc,
+            default_detail="협력업체를 저장하지 못했습니다.",
+            conflict_details={1: "협력업체를 저장하지 못했습니다. 회사명 또는 사업자번호를 확인해 주세요."},
+        )
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.put("/partners/{company_id}")
 def update_partner(company_id: int, payload: CompanyWriteRequest, request: Request):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(
             SqlLoader.get_sql("COMPANY_UPDATE"),
             {**_company_params(payload, "PARTNER", get_request_user_id(request)), "companyId": company_id},
@@ -297,22 +385,32 @@ def update_partner(company_id: int, payload: CompanyWriteRequest, request: Reque
         conn.commit()
         return {"status": "success"}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Partner company update failed.")
-        raise HTTPException(status_code=409, detail="협력업체를 저장하지 못했습니다. 회사명 또는 사업자번호를 확인해 주세요.") from exc
+        _raise_company_write_error(
+            exc,
+            default_detail="협력업체를 저장하지 못했습니다.",
+            conflict_details={1: "협력업체를 저장하지 못했습니다. 회사명 또는 사업자번호를 확인해 주세요."},
+        )
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.delete("/partners/{company_id}")
 def delete_partner(company_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(
             SqlLoader.get_sql("COMPANY_DELETE"),
             {"companyId": company_id, "companyTypeCode": "PARTNER"},
@@ -322,22 +420,32 @@ def delete_partner(company_id: int):
         conn.commit()
         return {"status": "success"}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Partner company deletion failed.")
-        raise HTTPException(status_code=409, detail="직원 또는 프로젝트에 연결된 협력업체는 삭제할 수 없습니다.") from exc
+        _raise_company_write_error(
+            exc,
+            default_detail="협력업체를 삭제하지 못했습니다.",
+            conflict_details={2292: "직원 또는 프로젝트에 연결된 협력업체는 삭제할 수 없습니다."},
+        )
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.get("/partners/{company_id}/employees")
 def list_partner_employees(company_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         _ensure_company(cursor, company_id, "PARTNER")
         cursor.execute(
             SqlLoader.get_sql("COMPANY_EMPLOYEE_LIST"),
@@ -350,8 +458,10 @@ def list_partner_employees(company_id: int):
         logger.exception("Partner employee list query failed.")
         _raise_company_read_error(exc)
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.post("/partners/{company_id}/employees")
@@ -371,9 +481,11 @@ def delete_partner_employee(company_id: int, employee_id: int):
 
 @router.get("/headquarters")
 def get_headquarters():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         companies = _company_list(cursor, "HEADQUARTERS")
         company = companies[0] if companies else None
         histories: list[dict[str, Any]] = []
@@ -385,15 +497,19 @@ def get_headquarters():
         logger.exception("Headquarters query failed.")
         _raise_company_read_error(exc)
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.put("/headquarters")
 def save_headquarters(payload: CompanyWriteRequest, request: Request):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         user_id = get_request_user_id(request)
         companies = _company_list(cursor, "HEADQUARTERS")
         params = _company_params(payload, "HEADQUARTERS", user_id)
@@ -405,15 +521,23 @@ def save_headquarters(payload: CompanyWriteRequest, request: Request):
         conn.commit()
         return {"status": "success", "data": {"companyId": company_id}}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Headquarters save failed.")
-        raise HTTPException(status_code=409, detail="본사 정보를 저장하지 못했습니다. 회사명 또는 사업자번호를 확인해 주세요.") from exc
+        _raise_company_write_error(
+            exc,
+            default_detail="본사 정보를 저장하지 못했습니다.",
+            conflict_details={1: "본사 정보를 저장하지 못했습니다. 회사명 또는 사업자번호를 확인해 주세요."},
+        )
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.post("/headquarters/{company_id}/histories")
@@ -432,9 +556,11 @@ def _save_history(
     payload: HistoryWriteRequest,
     request: Request,
 ) -> dict[str, Any]:
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         _ensure_company(cursor, company_id, "HEADQUARTERS")
         params = {**_history_params(payload, get_request_user_id(request)), "companyId": company_id}
         if history_id:
@@ -455,22 +581,28 @@ def _save_history(
         conn.commit()
         return {"status": "success", "data": {"companyHistoryId": history_id}}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logger.exception("Headquarters history save failed.")
-        raise HTTPException(status_code=500, detail="회사 이력을 저장하지 못했습니다.") from exc
+        _raise_company_write_error(exc, default_detail="회사 이력을 저장하지 못했습니다.")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @router.delete("/headquarters/{company_id}/histories/{history_id}")
 def delete_history(company_id: int, history_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(
             SqlLoader.get_sql("COMPANY_HISTORY_DELETE"),
             {"companyId": company_id, "companyHistoryId": history_id},
@@ -480,8 +612,20 @@ def delete_history(company_id: int, history_id: int):
         conn.commit()
         return {"status": "success"}
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        logger.exception(
+            "Headquarters history deletion failed. company_id=%s history_id=%s",
+            company_id,
+            history_id,
+        )
+        _raise_company_write_error(exc, default_detail="회사 이력을 삭제하지 못했습니다.")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

@@ -40,8 +40,8 @@
     <section id="workforceManagementBoard" class="workforce-management-board" aria-labelledby="workforceManagementTimelineTitle" data-view="project" data-zoom="normal">
         <div class="workforce-management-board-toolbar">
             <div class="workforce-management-board-views" role="group" aria-label="대시보드 표현 유형">
-                <button class="is-active" type="button" data-workforce-view="project" aria-pressed="true">프로젝트 중심</button>
-                <button type="button" data-workforce-view="worker" aria-pressed="false">인력 중심</button>
+                <button class="is-active" type="button" data-workforce-view="project" aria-pressed="true">프로젝트</button>
+                <button type="button" data-workforce-view="worker" aria-pressed="false">인력</button>
             </div>
             <div class="workforce-management-board-tools">
                 <span id="workforceManagementEditGuide" class="workforce-management-edit-guide"><strong>인력 배치 방법</strong> 편집 모드를 켠 후 왼쪽 인력을 프로젝트로 드래그하세요.</span>
@@ -97,6 +97,24 @@
         </section>
         </div>
     </section>
+
+    <dialog id="workforceManagementWorkerDetailDialog" class="dialog workforce-management-worker-detail-dialog" aria-labelledby="workforceManagementWorkerDetailTitle">
+        <header class="dialog-header" data-workforce-worker-detail-drag-handle>
+            <div>
+                <p class="page-kicker">WORKER PROFILE</p>
+                <h3 id="workforceManagementWorkerDetailTitle">인력 상세정보</h3>
+                <p id="workforceManagementWorkerDetailSubtitle"></p>
+            </div>
+            <button class="dialog-close" type="button" data-workforce-worker-detail-close aria-label="인력 상세정보 닫기">×</button>
+        </header>
+        <div class="dialog-body workforce-management-worker-detail-body">
+            <div id="workforceManagementWorkerDetailPhoto" class="workforce-management-worker-detail-photo"></div>
+            <dl id="workforceManagementWorkerDetailFields" class="workforce-management-worker-detail-fields"></dl>
+        </div>
+        <footer class="dialog-footer">
+            <button class="button button-secondary" type="button" data-workforce-worker-detail-close>닫기</button>
+        </footer>
+    </dialog>
 
     <dialog id="workforceManagementQuickDialog" class="dialog workforce-management-quick-dialog" aria-labelledby="workforceManagementQuickTitle">
         <form id="workforceManagementQuickForm">

@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
+from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
 
 
@@ -165,25 +166,15 @@ def _output_number(variable) -> int:
     return int(value)
 
 
-def _oracle_error_code(exc: Exception) -> int | None:
-    if not getattr(exc, "args", None):
-        return None
-    return getattr(exc.args[0], "code", None)
-
-
 def _raise_service_error(exc: Exception) -> None:
-    if _oracle_error_code(exc) in {904, 942}:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "연간 투입계획 스키마가 설치되지 않았습니다. "
-                "database/INIT_SYSTEM_ALT.sql을 시스템 DB에 적용해 주세요."
-            ),
-        ) from exc
-    raise HTTPException(
-        status_code=500,
-        detail="연간 투입계획을 처리하지 못했습니다.",
-    ) from exc
+    raise_database_http_error(
+        exc,
+        default_detail="연간 투입계획을 처리하지 못했습니다.",
+        schema_detail=(
+            "연간 투입계획 스키마가 설치되지 않았습니다. "
+            "database/INIT_SYSTEM_ALT.sql을 시스템 DB에 적용해 주세요."
+        ),
+    )
 
 
 def _month_date(value: str) -> date:
@@ -1000,7 +991,7 @@ def create_scenario(payload: PlanningScenarioCreateRequest, request: Request):
         if conn:
             conn.rollback()
         logger.exception("Planning scenario creation failed.")
-        if _oracle_error_code(exc) == 1:
+        if oracle_error_code(exc) == 1:
             raise HTTPException(
                 status_code=409,
                 detail="같은 연도에 동일한 계획안 이름이 이미 있습니다.",
@@ -1151,7 +1142,7 @@ def save_scenario(
         if conn:
             conn.rollback()
         logger.exception("Planning scenario save failed. scenario_id=%s", scenario_id)
-        if _oracle_error_code(exc) == 1:
+        if oracle_error_code(exc) == 1:
             raise HTTPException(
                 status_code=409,
                 detail="중복된 프로젝트 또는 계획안 이름이 있습니다.",

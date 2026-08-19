@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
+from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
 
 
@@ -170,45 +171,25 @@ def _rows(cursor) -> list[dict[str, Any]]:
 
 
 def _raise_assignment_read_error(exc: Exception) -> None:
-    oracle_code = getattr(exc.args[0], "code", None) if getattr(exc, "args", None) else None
-    if oracle_code in {904, 942}:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "프로젝트 투입 스키마가 설치되지 않았습니다. "
-                "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
-            ),
-        ) from exc
-    if "DPY-4005" in str(exc):
-        raise HTTPException(
-            status_code=503,
-            detail="시스템 DB 연결을 확보하지 못했습니다. DB 접속 상태를 확인해 주세요.",
-        ) from exc
-    raise HTTPException(status_code=500, detail="프로젝트 투입정보를 조회하지 못했습니다.") from exc
-
-
-def _oracle_error_code(exc: Exception) -> int | str | None:
-    if not getattr(exc, "args", None):
-        return None
-    return getattr(exc.args[0], "code", None)
+    raise_database_http_error(
+        exc,
+        default_detail="프로젝트 투입정보를 조회하지 못했습니다.",
+        schema_detail=(
+            "프로젝트 투입 스키마가 설치되지 않았습니다. "
+            "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
+        ),
+    )
 
 
 def _raise_assignment_write_error(exc: Exception, detail: str) -> None:
-    oracle_code = _oracle_error_code(exc)
-    if oracle_code in {904, 942}:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "프로젝트 투입 스키마가 설치되지 않았습니다. "
-                "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
-            ),
-        ) from exc
-    if "DPY-4005" in str(exc):
-        raise HTTPException(
-            status_code=503,
-            detail="시스템 DB 연결을 확보하지 못했습니다. DB 접속 상태를 확인해 주세요.",
-        ) from exc
-    raise HTTPException(status_code=500, detail=detail) from exc
+    raise_database_http_error(
+        exc,
+        default_detail=detail,
+        schema_detail=(
+            "프로젝트 투입 스키마가 설치되지 않았습니다. "
+            "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
+        ),
+    )
 
 
 def _current_row(cursor) -> dict[str, Any]:
@@ -528,7 +509,7 @@ def create_company(project_id: int, payload: CompanyWriteRequest, request: Reque
         if isinstance(exc, HTTPException):
             raise
         logger.exception("Project company creation failed.")
-        if _oracle_error_code(exc) == 1:
+        if oracle_error_code(exc) == 1:
             raise HTTPException(status_code=409, detail="이미 등록된 참여회사입니다.") from exc
         _raise_assignment_write_error(exc, "참여회사를 저장하지 못했습니다.")
     finally:
@@ -567,7 +548,7 @@ def update_company(project_id: int, company_id: int, payload: CompanyUpdateReque
         if isinstance(exc, HTTPException):
             raise
         logger.exception("Project company update failed.")
-        if _oracle_error_code(exc) == 1:
+        if oracle_error_code(exc) == 1:
             raise HTTPException(status_code=409, detail="이미 등록된 참여회사입니다.") from exc
         _raise_assignment_write_error(exc, "참여회사를 저장하지 못했습니다.")
     finally:
@@ -607,7 +588,7 @@ def delete_company(
         if isinstance(exc, HTTPException):
             raise
         logger.exception("Project company deletion failed.")
-        if _oracle_error_code(exc) == 2292:
+        if oracle_error_code(exc) == 2292:
             raise HTTPException(status_code=409, detail="투입인력이 연결된 참여회사는 삭제할 수 없습니다.") from exc
         _raise_assignment_write_error(exc, "참여회사를 삭제하지 못했습니다.")
     finally:

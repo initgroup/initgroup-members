@@ -125,6 +125,8 @@ print('DB connection lifecycle contract OK')
 
     $sqlBindContractCode = @"
 from backend.database_helper import SqlLoader
+import backend.routers.admin_companies  # Registers company employee DML contracts.
+import backend.routers.admin_users  # Registers employee profile DML contracts.
 import backend.routers.project_assignments  # Registers critical assignment DML contracts.
 
 registered = SqlLoader.bind_contract_count()

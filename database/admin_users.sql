@@ -44,6 +44,8 @@ SELECT USER_ID
      , PHOTO_CONTENT_TYPE
      , PHOTO_FILE_SIZE
      , PHOTO_UPDATED_AT
+     , TECHNICAL_GRADE_CODE
+     , CAREER_MONTHS
   FROM "INIT$_TB_USER"
  WHERE 1=1
    AND (
@@ -57,8 +59,9 @@ SELECT USER_ID
         OR UPPER(JOB_TITLE) LIKE :keyword
        )
    AND (:useYn = 'ALL' OR USE_YN = :useYn)
- ORDER BY CREATED_AT DESC
-        , USER_ID DESC
+ ORDER BY EMPLOYEE_NO ASC NULLS LAST
+        , USER_NAME ASC
+        , USER_ID ASC
  OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
 ;
 
@@ -84,6 +87,8 @@ UPDATE "INIT$_TB_USER"
      , MOBILE_PHONE = :mobilePhone
      , OFFICE_PHONE = :officePhone
      , HR_NOTE = :hrNote
+     , TECHNICAL_GRADE_CODE = :technicalGradeCode
+     , CAREER_MONTHS = :careerMonths
      , UPDATED_AT = SYSTIMESTAMP
  WHERE USER_ID = :userId
 ;
@@ -120,6 +125,8 @@ INSERT INTO "INIT$_TB_USER" (
   , MOBILE_PHONE
   , OFFICE_PHONE
   , HR_NOTE
+  , TECHNICAL_GRADE_CODE
+  , CAREER_MONTHS
   , CREATED_AT
 ) VALUES (
     :loginId
@@ -144,6 +151,8 @@ INSERT INTO "INIT$_TB_USER" (
   , :mobilePhone
   , :officePhone
   , :hrNote
+  , :technicalGradeCode
+  , :careerMonths
   , SYSTIMESTAMP
 )
 ;

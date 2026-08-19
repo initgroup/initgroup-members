@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 
-import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
+from backend.database_errors import database_error_status, oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
 
 
@@ -29,12 +29,6 @@ class SitePreferenceUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _oracle_error_code(exc: Exception) -> int | None:
-    if not getattr(exc, "args", None):
-        return None
-    return getattr(exc.args[0], "code", None)
-
-
 def _normalize_skin(value: str | None) -> str:
     normalized = str(value or "").strip().lower()
     return normalized if normalized in ALLOWED_HOMEPAGE_SKINS else DEFAULT_HOMEPAGE_SKIN
@@ -50,7 +44,7 @@ def _read_portal_skin() -> tuple[str, bool]:
         row = cursor.fetchone()
         return (_normalize_skin(row[0] if row else None), bool(row))
     except Exception as exc:
-        if _oracle_error_code(exc) == 942:
+        if oracle_error_code(exc) == 942:
             logger.warning("System settings table is not installed; using the default skin.")
             return (DEFAULT_HOMEPAGE_SKIN, False)
         raise
@@ -70,7 +64,7 @@ def public_portal_preferences():
             "data": {"homepageSkin": portal_skin},
         }
     except Exception as exc:
-        if isinstance(exc, oracledb.Error):
+        if database_error_status(exc) == 503:
             logger.warning(
                 "Portal preferences DB query failed; using the default skin.",
                 exc_info=True,
@@ -97,14 +91,15 @@ def get_site_preferences():
         }
     except Exception as exc:
         logger.exception("Administrator portal preferences could not be loaded.")
-        raise HTTPException(
-            status_code=503 if isinstance(exc, oracledb.Error) else 500,
-            detail=(
-                "시스템 DB에 연결하지 못했습니다. DB 접속 상태를 확인해 주세요."
-                if isinstance(exc, oracledb.Error)
-                else "포털 설정을 불러오지 못했습니다."
+        raise_database_http_error(
+            exc,
+            default_detail="포털 설정을 불러오지 못했습니다.",
+            schema_detail=(
+                "System settings table is not installed. "
+                "Run database/INIT_SYSTEM_ALT.sql for an existing database."
             ),
-        ) from exc
+            unavailable_detail="시스템 DB에 연결하지 못했습니다. DB 접속 상태를 확인해 주세요.",
+        )
 
 
 @admin_router.put("")
@@ -138,17 +133,15 @@ def update_site_preferences(payload: SitePreferenceUpdateRequest, request: Reque
         if conn:
             conn.rollback()
         logger.exception("Administrator portal preferences update failed.")
-        detail = (
-            "System settings table is not installed. "
-            "Run database/INIT_SYSTEM_ALT.sql for an existing database."
-            if _oracle_error_code(exc) == 942
-            else (
-                "시스템 DB에 연결하지 못했습니다. DB 접속 상태를 확인해 주세요."
-                if isinstance(exc, oracledb.Error)
-                else "포털 설정을 저장하지 못했습니다."
-            )
+        raise_database_http_error(
+            exc,
+            default_detail="포털 설정을 저장하지 못했습니다.",
+            schema_detail=(
+                "System settings table is not installed. "
+                "Run database/INIT_SYSTEM_ALT.sql for an existing database."
+            ),
+            unavailable_detail="시스템 DB에 연결하지 못했습니다. DB 접속 상태를 확인해 주세요.",
         )
-        raise HTTPException(status_code=503, detail=detail) from exc
     finally:
         if cursor:
             cursor.close()

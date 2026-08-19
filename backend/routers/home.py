@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-import oracledb
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from backend.auth_context import authenticate_request
 from backend.database import get_db_connection
+from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.routers.planning_scenarios import load_scenario_detail
 
@@ -59,12 +59,6 @@ def _file_payload(row) -> dict[str, Any]:
         "fileSize": int(row[4] or 0),
         "sortOrder": int(row[5] or 0),
     }
-
-
-def _oracle_error_code(exc: Exception) -> int | None:
-    if not getattr(exc, "args", None):
-        return None
-    return getattr(exc.args[0], "code", None)
 
 
 def _executive_scenario_payload(source: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -200,7 +194,7 @@ def dashboard(
                 "partnerCount": int(workforce_row[1] or 0),
             }
         except Exception as exc:
-            if _oracle_error_code(exc) not in {904, 942}:
+            if oracle_error_code(exc) not in {904, 942}:
                 raise
             company_schema_available = False
             schema_warnings.append(
@@ -220,7 +214,7 @@ def dashboard(
                     load_scenario_detail(cursor, int(scenario_row[0]))
                 )
         except Exception as exc:
-            if _oracle_error_code(exc) not in {904, 942}:
+            if oracle_error_code(exc) not in {904, 942}:
                 raise
             planning_schema_available = False
             schema_warnings.append(
@@ -255,17 +249,12 @@ def dashboard(
         raise
     except Exception as exc:
         logger.exception("Executive dashboard query failed. plan_year=%s", plan_year)
-        oracle_code = _oracle_error_code(exc)
-        if oracle_code in {904, 942}:
-            detail = "시스템 DB 기본 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요."
-        elif isinstance(exc, oracledb.Error):
-            detail = "시스템 DB에 연결하지 못했습니다. DB 접속 상태와 연결 풀을 확인해 주세요."
-        else:
-            detail = "경영 현황을 불러오지 못했습니다."
-        raise HTTPException(
-            status_code=503 if oracle_code in {904, 942} or isinstance(exc, oracledb.Error) else 500,
-            detail=detail,
-        ) from exc
+        raise_database_http_error(
+            exc,
+            default_detail="경영 현황을 불러오지 못했습니다.",
+            schema_detail="시스템 DB 기본 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요.",
+            unavailable_detail="시스템 DB에 연결하지 못했습니다. DB 접속 상태와 연결 풀을 확인해 주세요.",
+        )
     finally:
         if cursor:
             cursor.close()
@@ -300,17 +289,11 @@ def download_notice_file(file_id: int):
         raise
     except Exception as exc:
         logger.exception("Notice attachment download failed. file_id=%s", file_id)
-        oracle_code = _oracle_error_code(exc)
-        if oracle_code in {904, 942}:
-            detail = "공지 첨부파일 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요."
-        elif isinstance(exc, oracledb.Error):
-            detail = "시스템 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
-        else:
-            detail = "공지 첨부파일을 내려받지 못했습니다."
-        raise HTTPException(
-            status_code=503 if oracle_code in {904, 942} or isinstance(exc, oracledb.Error) else 500,
-            detail=detail,
-        ) from exc
+        raise_database_http_error(
+            exc,
+            default_detail="공지 첨부파일을 내려받지 못했습니다.",
+            schema_detail="공지 첨부파일 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요.",
+        )
     finally:
         if cursor:
             cursor.close()

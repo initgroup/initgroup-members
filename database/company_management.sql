@@ -114,6 +114,10 @@ SELECT E.COMPANY_EMPLOYEE_ID
      , E.NOTE
      , E.CREATED_AT
      , E.UPDATED_AT
+     , E.GENDER_CODE
+     , E.AGE_YEARS
+     , E.TECHNICAL_GRADE_CODE
+     , E.CAREER_MONTHS
   FROM "INIT$_TB_COMPANY_EMPLOYEE" E
   JOIN "INIT$_TB_COMPANY" C
     ON C.COMPANY_ID = E.COMPANY_ID
@@ -139,6 +143,10 @@ INSERT INTO "INIT$_TB_COMPANY_EMPLOYEE" (
   , LEAVE_DATE
   , USE_YN
   , NOTE
+  , GENDER_CODE
+  , AGE_YEARS
+  , TECHNICAL_GRADE_CODE
+  , CAREER_MONTHS
   , CREATED_BY
   , CREATED_AT
 )
@@ -155,6 +163,10 @@ VALUES (
   , :leaveDate
   , :useYn
   , :note
+  , :genderCode
+  , :ageYears
+  , :technicalGradeCode
+  , :careerMonths
   , :userId
   , SYSTIMESTAMP
 )
@@ -174,6 +186,10 @@ UPDATE "INIT$_TB_COMPANY_EMPLOYEE" E
      , LEAVE_DATE = :leaveDate
      , USE_YN = :useYn
      , NOTE = :note
+     , GENDER_CODE = :genderCode
+     , AGE_YEARS = :ageYears
+     , TECHNICAL_GRADE_CODE = :technicalGradeCode
+     , CAREER_MONTHS = :careerMonths
      , UPDATED_BY = :userId
      , UPDATED_AT = SYSTIMESTAMP
  WHERE 1=1

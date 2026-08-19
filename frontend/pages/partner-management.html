@@ -5,7 +5,7 @@
 
     <section class="panel" aria-labelledby="partnerListTitle">
         <div class="panel-header"><div><h3 id="partnerListTitle">협력업체 목록</h3><p>회사를 선택하면 기본정보와 소속 직원이 표시됩니다.</p></div></div>
-        <div class="table-wrap"><table class="data-table company-management-table"><thead><tr><th>회사명</th><th>사업자번호</th><th>대표자</th><th>연락처</th><th>사용</th></tr></thead><tbody id="partnerTableBody"></tbody></table></div>
+        <div class="table-wrap"><table class="data-table company-management-table" role="grid" aria-label="협력업체 목록"><thead><tr><th>회사명</th><th>사업자번호</th><th>대표자</th><th>연락처</th><th>사용</th></tr></thead><tbody id="partnerTableBody"></tbody></table></div>
         <p id="partnerListStatus" class="inline-status" aria-live="polite"></p>
     </section>
 
@@ -36,7 +36,7 @@
 
     <section id="partnerEmployeePanel" class="panel" aria-labelledby="partnerEmployeeTitle" hidden>
         <div class="panel-header"><div><h3 id="partnerEmployeeTitle">협력업체 직원</h3><p id="partnerEmployeeDescription">선택한 회사의 직원을 관리합니다.</p></div></div>
-        <div class="table-wrap"><table class="data-table company-employee-table"><thead><tr><th>직원명</th><th>사번</th><th>부서</th><th>직급/직책</th><th>연락처</th><th>재직</th></tr></thead><tbody id="partnerEmployeeTableBody"></tbody></table></div>
+        <div class="table-wrap"><table class="data-table company-employee-table"><thead><tr><th>직원명</th><th>사번</th><th>부서</th><th>직급/직책</th><th>성별</th><th>만 나이</th><th>기술등급</th><th>경력월수</th><th>연락처</th><th>재직</th></tr></thead><tbody id="partnerEmployeeTableBody"></tbody></table></div>
         <div class="list-editor-action-bar"><button id="newPartnerEmployeeButton" class="button button-primary" type="button">새 직원</button></div>
         <form id="partnerEmployeeForm" class="company-employee-form">
             <input id="partnerEmployeeId" type="hidden">
@@ -47,6 +47,10 @@
                 <label class="field"><span>직급</span><input id="partnerEmployeePosition" class="input" maxlength="100"></label>
                 <label class="field"><span>직책</span><input id="partnerEmployeeJobTitle" class="input" maxlength="100"></label>
                 <label class="field"><span>재직 여부</span><select id="partnerEmployeeUseYn" class="select"><option value="Y">재직</option><option value="N">퇴사/미사용</option></select></label>
+                <label class="field"><span>성별</span><select id="partnerEmployeeGenderCode" class="select"><option value="">선택 안 함</option><option value="MALE">남성</option><option value="FEMALE">여성</option><option value="OTHER">기타</option><option value="UNDISCLOSED">미공개</option></select></label>
+                <label class="field"><span>만 나이</span><input id="partnerEmployeeAgeYears" class="input" type="number" min="0" max="150" step="1" placeholder="예: 35"></label>
+                <label class="field"><span>기술등급</span><select id="partnerEmployeeTechnicalGradeCode" class="select"><option value="">선택 안 함</option><option value="PROFESSIONAL_ENGINEER">기술사</option><option value="SPECIAL">특급</option><option value="ADVANCED">고급</option><option value="INTERMEDIATE">중급</option><option value="BEGINNER">초급</option></select></label>
+                <label class="field"><span>경력월수</span><input id="partnerEmployeeCareerMonths" class="input" type="number" min="0" max="1200" step="1" placeholder="예: 60"></label>
                 <label class="field"><span>이메일</span><input id="partnerEmployeeEmail" class="input" type="email" maxlength="300"></label>
                 <label class="field"><span>휴대전화</span><input id="partnerEmployeeMobile" class="input" maxlength="50"></label>
                 <label class="field"><span>입사일</span><input id="partnerEmployeeJoinDate" class="input" type="date"></label>

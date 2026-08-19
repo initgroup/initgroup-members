@@ -16,6 +16,7 @@ from backend.auth_context import (
     set_session_cookie,
 )
 from backend.database import get_db_connection
+from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.passwords import hash_password, verify_password
 
@@ -318,7 +319,7 @@ def signup(payload: SignupRequest):
         if conn:
             conn.rollback()
         logger.exception("Signup failed.")
-        raise HTTPException(status_code=500, detail="가입 처리 중 오류가 발생했습니다.") from exc
+        raise_database_http_error(exc, default_detail="가입 처리 중 오류가 발생했습니다.")
     finally:
         if cursor:
             cursor.close()
@@ -378,7 +379,7 @@ def login(payload: LoginRequest, request: Request, response: Response):
         if conn:
             conn.rollback()
         logger.exception("Login failed.")
-        raise HTTPException(status_code=500, detail="로그인 처리 중 오류가 발생했습니다.") from exc
+        raise_database_http_error(exc, default_detail="로그인 처리 중 오류가 발생했습니다.")
     finally:
         if cursor:
             cursor.close()

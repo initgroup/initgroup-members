@@ -6,12 +6,26 @@
     let controller = null;
     let companies = [];
     let employees = [];
+    const GENDER_LABELS = { MALE: "남성", FEMALE: "여성", OTHER: "기타", UNDISCLOSED: "미공개" };
+    const TECHNICAL_GRADE_LABELS = {
+        PROFESSIONAL_ENGINEER: "기술사", SPECIAL: "특급", ADVANCED: "고급",
+        INTERMEDIATE: "중급", BEGINNER: "초급"
+    };
 
     function query(selector) { return root?.querySelector(selector) || null; }
     function value(row, ...keys) { return Common.data.pick(row, ...keys); }
     function cell(text = "") { return Common.dom.element("td", { text }); }
     function dateValue(nextValue) { return nextValue ? String(nextValue).slice(0, 10) : ""; }
     function selectedCompanyId() { return query("#partnerCompanyId").value; }
+    function optionalNumber(selector) { const nextValue = query(selector).value; return nextValue === "" ? null : Number(nextValue); }
+
+    function updateSelectedCompanyRow() {
+        root?.querySelectorAll("#partnerTableBody tr[data-company-id]").forEach((row) => {
+            const selected = Boolean(selectedCompanyId()) && row.dataset.companyId === selectedCompanyId();
+            row.classList.toggle("is-selected", selected);
+            row.setAttribute("aria-selected", String(selected));
+        });
+    }
 
     function companyPayload() {
         return {
@@ -30,7 +44,9 @@
             jobTitle: query("#partnerEmployeeJobTitle").value.trim(), email: query("#partnerEmployeeEmail").value.trim(),
             mobilePhone: query("#partnerEmployeeMobile").value.trim(), joinDate: query("#partnerEmployeeJoinDate").value || null,
             leaveDate: query("#partnerEmployeeLeaveDate").value || null, useYn: query("#partnerEmployeeUseYn").value,
-            note: query("#partnerEmployeeNote").value.trim()
+            note: query("#partnerEmployeeNote").value.trim(), genderCode: query("#partnerEmployeeGenderCode").value || null,
+            ageYears: optionalNumber("#partnerEmployeeAgeYears"), technicalGradeCode: query("#partnerEmployeeTechnicalGradeCode").value || null,
+            careerMonths: optionalNumber("#partnerEmployeeCareerMonths")
         };
     }
 
@@ -38,18 +54,21 @@
         const body = query("#partnerTableBody"); Common.dom.clear(body);
         if (!companies.length) { const row = Common.dom.element("tr"); const empty = cell("등록된 협력업체가 없습니다."); empty.colSpan = 5; row.appendChild(empty); body.appendChild(row); return; }
         companies.forEach((company) => {
-            const row = Common.dom.element("tr", { attrs: { tabindex: "0", "data-company-id": value(company, "companyId", "COMPANY_ID") } });
+            const row = Common.dom.element("tr", { attrs: { tabindex: "0", "data-company-id": value(company, "companyId", "COMPANY_ID"), "aria-selected": "false" } });
             row.append(cell(value(company, "companyName", "COMPANY_NAME")), cell(value(company, "businessNumber", "BUSINESS_NUMBER") || "-"), cell(value(company, "representativeName", "REPRESENTATIVE_NAME") || "-"), cell(value(company, "phone", "PHONE") || "-"), cell(value(company, "useYn", "USE_YN") === "Y" ? "사용" : "미사용"));
             body.appendChild(row);
         });
+        updateSelectedCompanyRow();
     }
 
     function renderEmployees() {
         const body = query("#partnerEmployeeTableBody"); Common.dom.clear(body);
-        if (!employees.length) { const row = Common.dom.element("tr"); const empty = cell("등록된 직원이 없습니다."); empty.colSpan = 6; row.appendChild(empty); body.appendChild(row); return; }
+        if (!employees.length) { const row = Common.dom.element("tr"); const empty = cell("등록된 직원이 없습니다."); empty.colSpan = 10; row.appendChild(empty); body.appendChild(row); return; }
         employees.forEach((employee) => {
             const row = Common.dom.element("tr", { attrs: { tabindex: "0", "data-employee-id": value(employee, "companyEmployeeId", "COMPANY_EMPLOYEE_ID") } });
-            row.append(cell(value(employee, "employeeName", "EMPLOYEE_NAME")), cell(value(employee, "employeeNo", "EMPLOYEE_NO") || "-"), cell(value(employee, "departmentName", "DEPARTMENT_NAME") || "-"), cell(`${value(employee, "positionName", "POSITION_NAME") || "-"} / ${value(employee, "jobTitle", "JOB_TITLE") || "-"}`), cell(value(employee, "mobilePhone", "MOBILE_PHONE") || value(employee, "email", "EMAIL") || "-"), cell(value(employee, "useYn", "USE_YN") === "Y" ? "재직" : "퇴사/미사용"));
+            const genderCode = String(value(employee, "genderCode", "GENDER_CODE") || "").toUpperCase();
+            const gradeCode = String(value(employee, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase();
+            row.append(cell(value(employee, "employeeName", "EMPLOYEE_NAME")), cell(value(employee, "employeeNo", "EMPLOYEE_NO") || "-"), cell(value(employee, "departmentName", "DEPARTMENT_NAME") || "-"), cell(`${value(employee, "positionName", "POSITION_NAME") || "-"} / ${value(employee, "jobTitle", "JOB_TITLE") || "-"}`), cell(GENDER_LABELS[genderCode] || "-"), cell(value(employee, "ageYears", "AGE_YEARS") ?? "-"), cell(TECHNICAL_GRADE_LABELS[gradeCode] || "-"), cell(value(employee, "careerMonths", "CAREER_MONTHS") ?? "-"), cell(value(employee, "mobilePhone", "MOBILE_PHONE") || value(employee, "email", "EMAIL") || "-"), cell(value(employee, "useYn", "USE_YN") === "Y" ? "재직" : "퇴사/미사용"));
             body.appendChild(row);
         });
     }
@@ -65,6 +84,10 @@
         query("#partnerEmployeeJobTitle").value = value(employee, "jobTitle", "JOB_TITLE") || ""; query("#partnerEmployeeEmail").value = value(employee, "email", "EMAIL") || "";
         query("#partnerEmployeeMobile").value = value(employee, "mobilePhone", "MOBILE_PHONE") || ""; query("#partnerEmployeeJoinDate").value = dateValue(value(employee, "joinDate", "JOIN_DATE"));
         query("#partnerEmployeeLeaveDate").value = dateValue(value(employee, "leaveDate", "LEAVE_DATE")); query("#partnerEmployeeUseYn").value = value(employee, "useYn", "USE_YN") || "Y";
+        query("#partnerEmployeeGenderCode").value = String(value(employee, "genderCode", "GENDER_CODE") || "").toUpperCase();
+        query("#partnerEmployeeAgeYears").value = value(employee, "ageYears", "AGE_YEARS") ?? "";
+        query("#partnerEmployeeTechnicalGradeCode").value = String(value(employee, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase();
+        query("#partnerEmployeeCareerMonths").value = value(employee, "careerMonths", "CAREER_MONTHS") ?? "";
         query("#partnerEmployeeNote").value = value(employee, "note", "NOTE") || ""; query("#deletePartnerEmployeeButton").hidden = false;
     }
 
@@ -83,11 +106,12 @@
         query("#partnerEmail").value = value(company, "email", "EMAIL") || ""; query("#partnerPhone").value = value(company, "phone", "PHONE") || ""; query("#partnerAddress").value = value(company, "address", "ADDRESS") || "";
         query("#partnerWebsiteUrl").value = value(company, "websiteUrl", "WEBSITE_URL") || ""; query("#partnerEstablishedDate").value = dateValue(value(company, "establishedDate", "ESTABLISHED_DATE"));
         query("#partnerUseYn").value = value(company, "useYn", "USE_YN") || "Y"; query("#partnerNote").value = value(company, "note", "NOTE") || ""; query("#deletePartnerButton").hidden = false;
+        updateSelectedCompanyRow();
         loadEmployees(company).catch((error) => Common.ui.setInlineStatus(query("#partnerEmployeeStatus"), error.message, "error"));
     }
 
     function clearCompanyForm() {
-        query("#partnerForm").reset(); query("#partnerCompanyId").value = ""; query("#deletePartnerButton").hidden = true; query("#partnerEmployeePanel").hidden = true; employees = [];
+        query("#partnerForm").reset(); query("#partnerCompanyId").value = ""; query("#deletePartnerButton").hidden = true; query("#partnerEmployeePanel").hidden = true; employees = []; updateSelectedCompanyRow();
     }
 
     async function loadCompanies(selectId = "") {
@@ -125,6 +149,7 @@
         async init(context) {
             root = context.root; controller = new AbortController();
             query("#partnerTableBody").addEventListener("click", (event) => { const id = event.target.closest("tr[data-company-id]")?.dataset.companyId; const company = companies.find((item) => String(value(item, "companyId", "COMPANY_ID")) === id); if (company) fillCompany(company); }, { signal: controller.signal });
+            query("#partnerTableBody").addEventListener("keydown", (event) => { if (event.key !== "Enter" && event.key !== " ") return; const row = event.target.closest("tr[data-company-id]"); if (!row) return; event.preventDefault(); row.click(); }, { signal: controller.signal });
             query("#partnerEmployeeTableBody").addEventListener("click", (event) => { const id = event.target.closest("tr[data-employee-id]")?.dataset.employeeId; const employee = employees.find((item) => String(value(item, "companyEmployeeId", "COMPANY_EMPLOYEE_ID")) === id); if (employee) fillEmployee(employee); }, { signal: controller.signal });
             query("#newPartnerButton").addEventListener("click", clearCompanyForm, { signal: controller.signal }); query("#clearPartnerButton").addEventListener("click", clearCompanyForm, { signal: controller.signal });
             query("#partnerForm").addEventListener("submit", (event) => saveCompany(event).catch((error) => Common.ui.setInlineStatus(query("#partnerEditorStatus"), error.message, "error")), { signal: controller.signal });

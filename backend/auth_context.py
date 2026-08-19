@@ -9,6 +9,7 @@ from typing import Any, Optional
 from fastapi import HTTPException, Request, Response
 
 from backend.database import get_db_connection
+from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 
 
@@ -202,13 +203,18 @@ def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, A
         request.state.auth_user = user
         return user
     except HTTPException:
+        if conn:
+            conn.rollback()
         raise
     except Exception as exc:
+        if conn:
+            conn.rollback()
         logger.exception("Login session verification failed.")
-        raise HTTPException(
-            status_code=503,
-            detail="로그인 세션을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
-        ) from exc
+        raise_database_http_error(
+            exc,
+            default_detail="로그인 세션을 확인하지 못했습니다.",
+            unavailable_detail="로그인 세션을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+        )
     finally:
         if cursor:
             cursor.close()
