@@ -5216,9 +5216,9 @@ html.has-workforce-board-maximized {
 
 .workforce-management-worker-photo {
     display: grid;
-    width: 42px;
+    width: 48px;
     height: 42px;
-    flex: 0 0 42px;
+    flex: 0 0 48px;
     overflow: hidden;
     border: 1px solid #b9c6d5;
     border-radius: 7px;
@@ -5239,6 +5239,7 @@ html.has-workforce-board-maximized {
     color: #7b8ba0;
     font-size: 0.57rem;
     line-height: 1.15;
+    white-space: nowrap;
     text-align: center;
 }
 
@@ -5433,6 +5434,34 @@ html.has-workforce-board-maximized {
     gap: 8px;
 }
 
+.workforce-management-matrix-worker-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.workforce-management-matrix-worker-filters[hidden] {
+    display: none;
+}
+
+.workforce-management-matrix-worker-filters .field {
+    min-width: 0;
+}
+
+.workforce-management-matrix-worker-filters .select {
+    width: 132px;
+    min-height: 34px;
+    padding-block: 5px;
+    font-size: 0.72rem;
+}
+
+.workforce-management-matrix-worker-filters .input {
+    width: min(220px, 24vw);
+    min-height: 34px;
+    padding-block: 5px;
+    font-size: 0.72rem;
+}
+
 .workforce-management-project-sort {
     display: grid;
     min-width: 112px;
@@ -5572,6 +5601,48 @@ html.has-workforce-board-maximized {
     background: #fff7ed;
 }
 
+.workforce-management-board.is-editing .workforce-management-lane.is-drop-blocked {
+    position: relative;
+    z-index: 3;
+    cursor: not-allowed;
+    background: #fff1f2;
+    box-shadow: inset 0 0 0 3px #e11d48, 0 8px 24px rgb(190 18 60 / 0.16);
+}
+
+.workforce-management-board.is-editing .workforce-management-lane.is-drop-blocked .workforce-management-lane-info {
+    background: #fff1f2;
+}
+
+.workforce-management-drop-blocked-indicator {
+    position: absolute;
+    z-index: 12;
+    top: 50%;
+    left: 50%;
+    display: flex;
+    padding: 8px 12px;
+    align-items: center;
+    border: 1px solid #e11d48;
+    border-radius: 999px;
+    color: #9f1239;
+    background: rgb(255 255 255 / 0.96);
+    box-shadow: 0 6px 18px rgb(159 18 57 / 0.2);
+    gap: 6px;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+}
+
+.workforce-management-drop-blocked-icon {
+    color: #e11d48;
+    font-size: 1.15rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.workforce-management-drop-blocked-indicator strong {
+    font-size: 0.72rem;
+}
+
 .workforce-management-lane:last-child {
     border-bottom: 0;
 }
@@ -5615,9 +5686,9 @@ html.has-workforce-board-maximized {
 }
 
 .workforce-management-worker-row-info .workforce-management-worker-photo {
-    width: 42px;
+    width: 48px;
     height: 42px;
-    flex-basis: 42px;
+    flex-basis: 48px;
 }
 
 .workforce-management-worker-row-info .workforce-management-worker-photo > span {
@@ -5626,7 +5697,7 @@ html.has-workforce-board-maximized {
     color: #7b8ba0;
     font-size: 0.57rem;
     line-height: 1.15;
-    white-space: normal;
+    white-space: nowrap;
     text-align: center;
 }
 

@@ -17,6 +17,7 @@ from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
 from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
+from backend.department_config import enrich_department
 
 
 logger = logging.getLogger(__name__)
@@ -138,10 +139,10 @@ def _camel_key(value: str) -> str:
 def _rows(cursor) -> list[dict[str, Any]]:
     columns = [item[0] for item in cursor.description or []]
     return [
-        {
+        enrich_department({
             _camel_key(column): _serialize(value, column)
             for column, value in zip(columns, row)
-        }
+        })
         for row in cursor.fetchall()
     ]
 

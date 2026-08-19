@@ -26,6 +26,8 @@
     let establishmentYear = null;
     let boardView = "project";
     let projectSort = "start";
+    let workerTypeFilter = "";
+    let workerNameFilter = "";
     let boardZoom = 1;
     let boardRangeMode = "default";
     let editMode = false;
@@ -551,6 +553,35 @@
 
     const projectSortCollator = new Intl.Collator("ko-KR", { numeric: true, sensitivity: "base" });
 
+    function compareWorkerField(left, right, ...keys) {
+        const leftValue = String(pick(left, ...keys) || "").trim();
+        const rightValue = String(pick(right, ...keys) || "").trim();
+        if (!leftValue && !rightValue) return 0;
+        if (!leftValue) return 1;
+        if (!rightValue) return -1;
+        return projectSortCollator.compare(leftValue, rightValue);
+    }
+
+    function compareWorkers(left, right) {
+        const leftDepartmentOrderValue = pick(left, "departmentDisplayOrder", "DEPARTMENT_DISPLAY_ORDER");
+        const rightDepartmentOrderValue = pick(right, "departmentDisplayOrder", "DEPARTMENT_DISPLAY_ORDER");
+        const leftDepartmentOrder = leftDepartmentOrderValue === null || leftDepartmentOrderValue === undefined || leftDepartmentOrderValue === ""
+            ? Number.MAX_SAFE_INTEGER : Number(leftDepartmentOrderValue);
+        const rightDepartmentOrder = rightDepartmentOrderValue === null || rightDepartmentOrderValue === undefined || rightDepartmentOrderValue === ""
+            ? Number.MAX_SAFE_INTEGER : Number(rightDepartmentOrderValue);
+        const departmentOrder = leftDepartmentOrder - rightDepartmentOrder;
+        return compareWorkerField(left, right, "companyName", "COMPANY_NAME")
+            || departmentOrder
+            || compareWorkerField(left, right, "departmentName", "DEPARTMENT_NAME")
+            || compareWorkerField(left, right, "employeeNo", "EMPLOYEE_NO")
+            || compareWorkerField(left, right, "employeeName", "EMPLOYEE_NAME")
+            || projectSortCollator.compare(String(left.workerKey || ""), String(right.workerKey || ""));
+    }
+
+    function projectEditActive() {
+        return editMode && boardView === "project";
+    }
+
     function compareProjectDates(left, right) {
         const leftText = String(left || "");
         const rightText = String(right || "");
@@ -785,14 +816,29 @@
         return !worker.workerKey.startsWith("USER:") && workerType !== "INTERNAL";
     }
 
+    function applyWorkerFilters(type, name) {
+        workerTypeFilter = String(type || "");
+        workerNameFilter = String(name || "").trim();
+        ["#workforceManagementWorkerType", "#workforceManagementMatrixWorkerType"].forEach((selector) => {
+            const control = query(selector);
+            if (control) control.value = workerTypeFilter;
+        });
+        ["#workforceManagementWorkerSearch", "#workforceManagementMatrixWorkerSearch"].forEach((selector) => {
+            const control = query(selector);
+            if (control && control.value !== workerNameFilter) control.value = workerNameFilter;
+        });
+        renderWorkers();
+        renderLanes();
+    }
+
     function renderWorkers() {
         const container = query("#workforceManagementWorkers");
-        const keyword = query("#workforceManagementWorkerSearch").value.trim().toLocaleLowerCase("ko-KR");
-        const type = query("#workforceManagementWorkerType").value;
+        const keyword = workerNameFilter.toLocaleLowerCase("ko-KR");
+        const type = workerTypeFilter;
         const workers = workerStatistics()
             .filter((worker) => workerMatchesType(worker, type))
             .filter((worker) => !keyword || String(pick(worker, "employeeName", "EMPLOYEE_NAME") || "").toLocaleLowerCase("ko-KR").includes(keyword))
-            .sort((left, right) => right.availableMonths - left.availableMonths || String(pick(left, "employeeName", "EMPLOYEE_NAME")).localeCompare(String(pick(right, "employeeName", "EMPLOYEE_NAME")), "ko"));
+            .sort(compareWorkers);
         container.replaceChildren();
         query("#workforceManagementWorkerCount").textContent = `${workers.length}명`;
         if (!workers.length) {
@@ -847,7 +893,7 @@
 
     function renderProjectPalette() {
         const palette = query("#workforceManagementProjectPalette");
-        palette.hidden = !editMode || boardView === "project";
+        palette.hidden = !projectEditActive() || boardView === "project";
         palette.replaceChildren();
         if (palette.hidden) return;
         palette.appendChild(element("strong", "", "프로젝트를 인력의 월 셀로 끌어 배치"));
@@ -925,7 +971,7 @@
         node.dataset.laneKey = lane.key;
         node.dataset.workerKey = workerKey(assignment);
         node.dataset.projectId = lane.projectId;
-        node.draggable = editMode && !isPendingRemoval(identity);
+        node.draggable = projectEditActive() && !isPendingRemoval(identity);
         node.classList.toggle("is-draft", isEditDraft(assignment));
         node.classList.toggle("is-pending-removal", isPendingRemoval(identity));
     }
@@ -1025,23 +1071,33 @@
         });
     }
 
-    function visibleWorkers() {
+    function visibleWorkers(lanes = projectScopedLanes()) {
         const keyword = query("#workforceManagementSearch").value.trim().toLowerCase();
-        const type = query("#workforceManagementWorkerType").value;
+        const nameKeyword = workerNameFilter.toLocaleLowerCase("ko-KR");
+        const projectSelected = Boolean(selectedProjectId());
         return workerStatistics()
-            .filter((worker) => workerMatchesType(worker, type))
+            .filter((worker) => workerMatchesType(worker, workerTypeFilter))
+            .filter((worker) => !nameKeyword || String(pick(worker, "employeeName", "EMPLOYEE_NAME") || "").toLocaleLowerCase("ko-KR").includes(nameKeyword))
+            .filter((worker) => !projectSelected || lanes.some((lane) => boardAssignments(lane).some((assignment) => workerKey(assignment) === worker.workerKey)))
             .filter((worker) => !keyword || [
                 pick(worker, "employeeName", "EMPLOYEE_NAME"),
                 pick(worker, "companyName", "COMPANY_NAME"),
                 pick(worker, "departmentName", "DEPARTMENT_NAME"),
                 pick(worker, "positionName", "POSITION_NAME")
-            ].join(" ").toLowerCase().includes(keyword));
+            ].join(" ").toLowerCase().includes(keyword) || lanes.some((lane) => (
+                laneMatches(lane, keyword)
+                && boardAssignments(lane).some((assignment) => workerKey(assignment) === worker.workerKey)
+            )))
+            .sort(compareWorkers);
     }
 
     function renderWorkerMatrix() {
         const container = query("#workforceManagementLanes");
-        const lanes = projectScopedLanes().filter((lane) => projectFilter === "all" || lane.type === projectFilter);
-        const workers = visibleWorkers();
+        const keyword = query("#workforceManagementSearch").value.trim().toLowerCase();
+        const scopedLanes = projectScopedLanes().filter((lane) => projectFilter === "all" || lane.type === projectFilter);
+        const matchingLanes = keyword ? scopedLanes.filter((lane) => laneMatches(lane, keyword)) : [];
+        const lanes = matchingLanes.length ? matchingLanes : scopedLanes;
+        const workers = visibleWorkers(lanes);
         const { capacity } = allocationState();
         container.replaceChildren();
         if (!workers.length) {
@@ -1058,7 +1114,7 @@
             const rowCount = Math.max(1, projects.length);
             const workerCell = element("div", "workforce-management-worker-row-info");
             workerCell.dataset.workerKey = worker.workerKey;
-            workerCell.draggable = editMode;
+            workerCell.draggable = false;
             workerCell.style.gridRow = `1 / span ${rowCount}`;
             const identity = element("div", "workforce-management-worker-row-identity");
             const nameRow = element("div", "workforce-management-worker-row-name");
@@ -1084,7 +1140,6 @@
                 cell.dataset.dropMonth = month;
                 cell.style.gridColumn = String(index + 2);
                 cell.style.gridRow = `1 / span ${rowCount}`;
-                if (editMode) cell.appendChild(element("span", "workforce-management-cell-empty", "+"));
                 row.appendChild(cell);
             });
             projects.forEach(({ lane, assignment }, index) => {
@@ -2448,8 +2503,9 @@
     function setBoardView(nextView) {
         if (!["worker", "project"].includes(nextView)) return;
         boardView = nextView;
-        if (nextView === "worker" && editMode) setEditMode(false);
-        query("#workforceManagementBoard").dataset.view = nextView;
+        const board = query("#workforceManagementBoard");
+        board.dataset.view = nextView;
+        board.classList.toggle("is-editing", projectEditActive());
         root.querySelectorAll("[data-workforce-view]").forEach((button) => {
             const selected = button.dataset.workforceView === nextView;
             button.classList.toggle("is-active", selected);
@@ -2457,6 +2513,7 @@
         });
         query("#workforceManagementEditModeButton").hidden = nextView !== "project";
         query("#workforceManagementProjectSortField").hidden = nextView !== "project";
+        query("#workforceManagementMatrixWorkerFilters").hidden = nextView !== "worker";
         syncEditDraftControls();
         renderProjectPalette();
         renderMonthHeader();
@@ -2464,7 +2521,7 @@
     }
 
     function setEditMode(enabled) {
-        editMode = boardView === "project" && Boolean(enabled);
+        editMode = Boolean(enabled);
         const button = query("#workforceManagementEditModeButton");
         button.classList.toggle("is-active", editMode);
         button.setAttribute("aria-pressed", String(editMode));
@@ -2472,7 +2529,7 @@
         button.title = editMode
             ? "편집 모드를 종료합니다. 저장하지 않은 변경사항은 변경사항 저장 버튼으로 먼저 반영해 주세요."
             : "편집 모드를 켜면 인력 추가, 배치 순서 변경 및 일괄 저장을 사용할 수 있습니다.";
-        query("#workforceManagementBoard").classList.toggle("is-editing", editMode);
+        query("#workforceManagementBoard").classList.toggle("is-editing", projectEditActive());
         renderWorkers();
         renderProjectPalette();
         renderLanes();
@@ -2536,7 +2593,7 @@
     }
 
     function handleBoardDragStart(event) {
-        if (!editMode || mutationBusy) return;
+        if (!projectEditActive() || mutationBusy) return;
         if (event.target.closest("[data-remove-assignment], [data-worker-detail]")) {
             event.preventDefault();
             return;
@@ -2560,7 +2617,9 @@
 
     function clearBoardDragFeedback() {
         root.querySelectorAll(".is-drag-over").forEach((item) => item.classList.remove("is-drag-over"));
+        root.querySelectorAll(".is-drop-blocked").forEach((item) => item.classList.remove("is-drop-blocked"));
         root.querySelectorAll(".workforce-management-insert-indicator").forEach((item) => item.remove());
+        root.querySelectorAll(".workforce-management-drop-blocked-indicator").forEach((item) => item.remove());
     }
 
     function handleBoardDragEnd(event) {
@@ -2602,21 +2661,48 @@
         timeline.appendChild(indicator);
     }
 
+    function isDuplicateProjectDrop(lane, payload) {
+        if (!lane || !["worker", "assignment"].includes(payload?.type) || !payload.workerKey) return false;
+        return boardAssignments(lane).some((assignment) => (
+            workerKey(assignment) === payload.workerKey
+            && assignmentIdentity(lane, assignment) !== payload.assignmentKey
+        ));
+    }
+
+    function showBlockedProjectDrop(article) {
+        article.classList.add("is-drop-blocked");
+        const indicator = element("div", "workforce-management-drop-blocked-indicator");
+        indicator.setAttribute("role", "status");
+        indicator.setAttribute("aria-label", "이미 등록된 인력이므로 드롭할 수 없습니다.");
+        indicator.append(
+            element("span", "workforce-management-drop-blocked-icon", "⊘"),
+            element("strong", "", "이미 등록된 인력")
+        );
+        article.appendChild(indicator);
+    }
+
     function handleBoardDragOver(event) {
-        if (!editMode || mutationBusy) return;
+        if (!projectEditActive() || mutationBusy) return;
         const payload = activeBoardDrag;
         const projectLane = event.target.closest("[data-drop-project-lane]");
         const workerTarget = event.target.closest("[data-drop-worker-key]");
         if (!payload || (!projectLane && !workerTarget)) return;
         if (projectLane && !["worker", "assignment"].includes(payload.type)) return;
         event.preventDefault();
-        event.dataTransfer.dropEffect = payload.type === "assignment" ? "move" : "copy";
-        root.querySelectorAll(".is-drag-over").forEach((item) => item.classList.remove("is-drag-over"));
+        clearBoardDragFeedback();
         if (projectLane) {
+            const lane = laneByKey(projectLane.dataset.dropProjectLane);
+            if (isDuplicateProjectDrop(lane, payload)) {
+                event.dataTransfer.dropEffect = "none";
+                showBlockedProjectDrop(projectLane);
+                return;
+            }
+            event.dataTransfer.dropEffect = payload.type === "assignment" ? "move" : "copy";
             projectLane.classList.add("is-drag-over");
             showProjectInsertion(projectLane, payload, event.clientY);
             return;
         }
+        event.dataTransfer.dropEffect = payload.type === "assignment" ? "move" : "copy";
         workerTarget.classList.add("is-drag-over");
     }
 
@@ -2627,12 +2713,17 @@
         const indicator = projectLane?.querySelector(".workforce-management-insert-indicator");
         const insertIndex = Number(indicator?.dataset.insertIndex ?? Number.MAX_SAFE_INTEGER);
         const target = projectLane || workerTarget;
+        const lane = projectLane ? laneByKey(projectLane.dataset.dropProjectLane) : null;
+        const duplicateDrop = isDuplicateProjectDrop(lane, payload);
         clearBoardDragFeedback();
         activeBoardDrag = null;
-        if (!target || !payload || !editMode || mutationBusy) return;
+        if (!target || !payload || !projectEditActive() || mutationBusy) return;
         event.preventDefault();
         if (projectLane) {
-            const lane = laneByKey(projectLane.dataset.dropProjectLane);
+            if (duplicateDrop) {
+                Common.ui.setInlineStatus(query("#workforceManagementBoardStatus"), "이미 등록된 인력은 같은 프로젝트에 다시 배치할 수 없습니다.", "warning");
+                return;
+            }
             if (payload.type === "worker") stageWorkerDraft(lane, payload.workerKey, insertIndex);
             if (payload.type === "assignment") {
                 if (String(payload.assignmentKey).startsWith("draft:")) {
@@ -2668,11 +2759,12 @@
             renderWorkers();
             renderLanes();
         }, { signal: controller.signal });
-        query("#workforceManagementWorkerType").addEventListener("change", () => {
-            renderWorkers();
-            renderLanes();
-        }, { signal: controller.signal });
-        query("#workforceManagementWorkerSearch").addEventListener("input", renderWorkers, { signal: controller.signal });
+        [query("#workforceManagementWorkerType"), query("#workforceManagementMatrixWorkerType")].forEach((control) => {
+            control.addEventListener("change", (event) => applyWorkerFilters(event.currentTarget.value, workerNameFilter), { signal: controller.signal });
+        });
+        [query("#workforceManagementWorkerSearch"), query("#workforceManagementMatrixWorkerSearch")].forEach((control) => {
+            control.addEventListener("input", (event) => applyWorkerFilters(workerTypeFilter, event.currentTarget.value), { signal: controller.signal });
+        });
         query("#workforceManagementProjectSort").addEventListener("change", (event) => {
             projectSort = event.currentTarget.value === "customer" ? "customer" : "start";
             renderLanes();
@@ -2937,6 +3029,8 @@
             projectFilter = "all";
             boardView = "project";
             projectSort = "start";
+            workerTypeFilter = "";
+            workerNameFilter = "";
             boardZoom = 1;
             boardRangeMode = "default";
             editMode = false;
@@ -3015,6 +3109,8 @@
             establishmentYear = null;
             boardView = "project";
             projectSort = "start";
+            workerTypeFilter = "";
+            workerNameFilter = "";
             boardZoom = 1;
             boardRangeMode = "default";
             editMode = false;

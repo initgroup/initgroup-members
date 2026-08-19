@@ -15,6 +15,7 @@ from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
 from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
+from backend.department_config import enrich_department
 
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ def _rows(cursor) -> list[dict[str, Any]]:
             except (TypeError, ValueError, json.JSONDecodeError):
                 item["monthlyAllocations"] = []
                 item["allocationDataQualityError"] = True
-        result.append(item)
+        result.append(enrich_department(item))
     return result
 
 

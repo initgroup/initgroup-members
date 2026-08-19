@@ -1,0 +1,29 @@
+{
+  "departments": [
+    {
+      "code": "MANAGEMENT_STRATEGY_SUPPORT",
+      "label": "경영전략지원부",
+      "displayOrder": 10
+    },
+    {
+      "code": "CORPORATE_RESEARCH_INSTITUTE",
+      "label": "기업부설연구소",
+      "displayOrder": 20
+    },
+    {
+      "code": "APP_DEVELOPMENT",
+      "label": "APP개발사업부",
+      "displayOrder": 30
+    },
+    {
+      "code": "DEVELOPMENT_OPERATIONS",
+      "label": "개발운영사업부",
+      "displayOrder": 40
+    },
+    {
+      "code": "BIG_DATA",
+      "label": "빅데이터사업부",
+      "displayOrder": 50
+    }
+  ]
+}

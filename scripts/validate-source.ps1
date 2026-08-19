@@ -242,6 +242,14 @@ if alt_path.exists():
         }
     Write-Host "VS Code JSON OK" -ForegroundColor Green
 
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot "frontend\config") -Filter "*.json" -File |
+        ForEach-Object {
+            Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 |
+                ConvertFrom-Json |
+                Out-Null
+        }
+    Write-Host "Frontend config JSON OK" -ForegroundColor Green
+
     $scriptParseErrors = @()
     Get-ChildItem -LiteralPath (Join-Path $repoRoot "scripts") -Filter "*.ps1" -File |
         ForEach-Object {

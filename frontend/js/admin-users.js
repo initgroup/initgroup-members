@@ -12,6 +12,7 @@
     let userPage = 1;
     let userTotal = 0;
     let userTotalPages = 1;
+    let departments = [];
     const EMPLOYMENT_STATUS_LABELS = { ACTIVE: "재직", LEAVE: "휴직", RETIRED: "퇴직" };
     const TECHNICAL_GRADE_LABELS = {
         PROFESSIONAL_ENGINEER: "기술사", SPECIAL: "특급", ADVANCED: "고급",
@@ -45,6 +46,36 @@
     function setValue(selector, nextValue) {
         const element = query(selector);
         if (element) element.value = nextValue ?? "";
+    }
+
+    async function loadDepartmentConfig() {
+        const response = await fetch("/config/departments.json", {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            signal: controller.signal
+        });
+        if (!response.ok) throw new Error("부서 설정을 불러오지 못했습니다.");
+        const payload = await response.json();
+        departments = Array.isArray(payload?.departments)
+            ? [...payload.departments].sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder))
+            : [];
+        if (!departments.length) throw new Error("등록된 부서 설정이 없습니다.");
+        const select = query("#userDepartmentCode");
+        select.replaceChildren(Common.dom.element("option", { text: "선택 안 함", attrs: { value: "" } }));
+        departments.forEach((department) => {
+            select.appendChild(Common.dom.element("option", {
+                text: department.label,
+                attrs: { value: department.code }
+            }));
+        });
+    }
+
+    function departmentCode(row) {
+        const code = String(value(row, "departmentCode", "DEPARTMENT_CODE") || "").toUpperCase();
+        if (departments.some((department) => department.code === code)) return code;
+        const label = String(value(row, "departmentName", "DEPARTMENT_NAME") || "");
+        return departments.find((department) => department.label === label)?.code || "";
     }
 
     function updateAge() {
@@ -106,7 +137,7 @@
         setValue("#userRetirementDate", dateValue(value(row, "retirementDate", "RETIREMENT_DATE")));
         setValue("#userEmploymentStatusCode", String(value(row, "employmentStatusCode", "EMPLOYMENT_STATUS_CODE") || "ACTIVE").toUpperCase());
         setValue("#userEmploymentTypeCode", String(value(row, "employmentTypeCode", "EMPLOYMENT_TYPE_CODE") || "").toUpperCase());
-        setValue("#userDepartmentName", value(row, "departmentName", "DEPARTMENT_NAME"));
+        setValue("#userDepartmentCode", departmentCode(row));
         setValue("#userPositionName", value(row, "positionName", "POSITION_NAME"));
         setValue("#userJobTitle", value(row, "jobTitle", "JOB_TITLE"));
         setValue("#userTechnicalGradeCode", String(value(row, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase());
@@ -289,7 +320,7 @@
             retirementDate: query("#userRetirementDate").value || null,
             employmentStatusCode: query("#userEmploymentStatusCode").value,
             employmentTypeCode: query("#userEmploymentTypeCode").value || null,
-            departmentName: query("#userDepartmentName").value.trim() || null,
+            departmentCode: query("#userDepartmentCode").value || null,
             positionName: query("#userPositionName").value.trim() || null,
             jobTitle: query("#userJobTitle").value.trim() || null,
             workLocation: query("#userWorkLocation").value.trim() || null,
@@ -530,6 +561,7 @@
         async init(context) {
             root = context.root;
             controller = new AbortController();
+            await loadDepartmentConfig();
             query("#userSearchForm")?.addEventListener("submit", (event) => {
                 event.preventDefault();
                 loadUsers({ resetPage: true });
@@ -637,6 +669,7 @@
             userPage = 1;
             userTotal = 0;
             userTotalPages = 1;
+            departments = [];
             clearLocalPhotoUrl();
         }
     };

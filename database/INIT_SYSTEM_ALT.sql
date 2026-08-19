@@ -262,6 +262,28 @@ BEGIN
     ADD_COLUMN_IF_MISSING('INIT$_TB_USER', 'PHOTO_UPDATED_AT', 'TIMESTAMP (6)');
     ADD_COLUMN_IF_MISSING('INIT$_TB_USER', 'TECHNICAL_GRADE_CODE', 'VARCHAR2(30 BYTE)');
     ADD_COLUMN_IF_MISSING('INIT$_TB_USER', 'CAREER_MONTHS', 'NUMBER(5)');
+    ADD_COLUMN_IF_MISSING('INIT$_TB_USER', 'DEPARTMENT_CODE', 'VARCHAR2(50 BYTE)');
+    RUN_DDL(
+        q'[UPDATE "INIT$_TB_USER"
+              SET "DEPARTMENT_CODE" = CASE "DEPARTMENT_NAME"
+                    WHEN '경영전력지원부' THEN 'MANAGEMENT_STRATEGY_SUPPORT'
+                    WHEN '경영전략지원부' THEN 'MANAGEMENT_STRATEGY_SUPPORT'
+                    WHEN '기업부설연구소' THEN 'CORPORATE_RESEARCH_INSTITUTE'
+                    WHEN 'APP개발사업부' THEN 'APP_DEVELOPMENT'
+                    WHEN '개발운영사업부' THEN 'DEVELOPMENT_OPERATIONS'
+                    WHEN '빅데이터사업부' THEN 'BIG_DATA'
+                  END
+            WHERE "DEPARTMENT_CODE" IS NULL
+              AND "DEPARTMENT_NAME" IN ('경영전력지원부', '경영전략지원부', '기업부설연구소', 'APP개발사업부', '개발운영사업부', '빅데이터사업부')]'
+      , 'MIGRATE INIT$_TB_USER.DEPARTMENT_CODE'
+    );
+    RUN_DDL(
+        q'[UPDATE "INIT$_TB_USER"
+              SET "DEPARTMENT_NAME" = '경영전략지원부'
+            WHERE "DEPARTMENT_CODE" = 'MANAGEMENT_STRATEGY_SUPPORT'
+              AND NVL("DEPARTMENT_NAME", ' ') <> '경영전략지원부']'
+      , 'NORMALIZE INIT$_TB_USER MANAGEMENT_STRATEGY_SUPPORT LABEL'
+    );
 
     ADD_CONSTRAINT_IF_MISSING(
         'INIT$_UK_USER_EMPLOYEE_NO'

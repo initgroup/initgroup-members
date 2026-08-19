@@ -46,6 +46,7 @@ SELECT USER_ID
      , PHOTO_UPDATED_AT
      , TECHNICAL_GRADE_CODE
      , CAREER_MONTHS
+     , DEPARTMENT_CODE
   FROM "INIT$_TB_USER"
  WHERE 1=1
    AND (
@@ -81,6 +82,7 @@ UPDATE "INIT$_TB_USER"
      , EMPLOYMENT_STATUS_CODE = :employmentStatusCode
      , EMPLOYMENT_TYPE_CODE = :employmentTypeCode
      , DEPARTMENT_NAME = :departmentName
+     , DEPARTMENT_CODE = :departmentCode
      , POSITION_NAME = :positionName
      , JOB_TITLE = :jobTitle
      , WORK_LOCATION = :workLocation
@@ -127,6 +129,7 @@ INSERT INTO "INIT$_TB_USER" (
   , HR_NOTE
   , TECHNICAL_GRADE_CODE
   , CAREER_MONTHS
+  , DEPARTMENT_CODE
   , CREATED_AT
 ) VALUES (
     :loginId
@@ -153,6 +156,7 @@ INSERT INTO "INIT$_TB_USER" (
   , :hrNote
   , :technicalGradeCode
   , :careerMonths
+  , :departmentCode
   , SYSTIMESTAMP
 )
 ;

@@ -6,10 +6,65 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from backend.database_helper import SqlLoader
+from backend.department_config import departments, enrich_department
+from backend.department_config import departments, enrich_department
 from backend.routers import admin_companies, admin_users
 
 
 class WorkforceProfileFieldTests(unittest.TestCase):
+    def test_department_config_has_unique_ordered_entries(self):
+        items = departments()
+
+        self.assertEqual(5, len(items))
+        self.assertEqual([10, 20, 30, 40, 50], [item["displayOrder"] for item in items])
+        self.assertEqual("경영전략지원부", items[0]["label"])
+        self.assertEqual(len(items), len({item["code"] for item in items}))
+
+    def test_department_code_is_saved_with_configured_label(self):
+        payload = admin_users.EmployeeProfileRequest(departmentCode="APP_DEVELOPMENT")
+
+        params = admin_users._profile_values(payload)
+
+        self.assertEqual("APP_DEVELOPMENT", params["departmentCode"])
+        self.assertEqual("APP개발사업부", params["departmentName"])
+        enriched = enrich_department({"departmentCode": "APP_DEVELOPMENT", "departmentName": "이전 라벨"})
+        self.assertEqual("APP개발사업부", enriched["departmentName"])
+        self.assertEqual(30, enriched["departmentDisplayOrder"])
+
+    def test_unsupported_department_code_is_rejected(self):
+        payload = admin_users.EmployeeProfileRequest(departmentCode="UNKNOWN")
+
+        with self.assertRaises(HTTPException) as context:
+            admin_users._profile_values(payload)
+
+        self.assertEqual(400, context.exception.status_code)
+
+    def test_department_config_has_unique_ordered_entries(self):
+        items = departments()
+
+        self.assertEqual(5, len(items))
+        self.assertEqual([10, 20, 30, 40, 50], [item["displayOrder"] for item in items])
+        self.assertEqual(len(items), len({item["code"] for item in items}))
+
+    def test_department_code_is_saved_with_configured_label(self):
+        payload = admin_users.EmployeeProfileRequest(departmentCode="APP_DEVELOPMENT")
+
+        params = admin_users._profile_values(payload)
+
+        self.assertEqual("APP_DEVELOPMENT", params["departmentCode"])
+        self.assertEqual("APP개발사업부", params["departmentName"])
+        enriched = enrich_department({"departmentCode": "APP_DEVELOPMENT", "departmentName": "이전 라벨"})
+        self.assertEqual("APP개발사업부", enriched["departmentName"])
+        self.assertEqual(30, enriched["departmentDisplayOrder"])
+
+    def test_unsupported_department_code_is_rejected(self):
+        payload = admin_users.EmployeeProfileRequest(departmentCode="UNKNOWN")
+
+        with self.assertRaises(HTTPException) as context:
+            admin_users._profile_values(payload)
+
+        self.assertEqual(400, context.exception.status_code)
+
     def test_admin_user_grade_and_career_months_are_normalized(self):
         payload = admin_users.EmployeeProfileRequest(
             technicalGradeCode="advanced",

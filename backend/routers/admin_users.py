@@ -18,6 +18,7 @@ from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
 from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
+from backend.department_config import enrich_department, resolve_department
 from backend.passwords import hash_password
 
 
@@ -39,7 +40,7 @@ _PHOTO_TYPES = {
 }
 _ADMIN_USER_PROFILE_BINDS = {
     "employeeNo", "genderCode", "birthDate", "birthCalendarCode", "hireDate",
-    "retirementDate", "employmentStatusCode", "employmentTypeCode", "departmentName",
+    "retirementDate", "employmentStatusCode", "employmentTypeCode", "departmentName", "departmentCode",
     "positionName", "jobTitle", "workLocation", "mobilePhone", "officePhone", "hrNote",
     "technicalGradeCode", "careerMonths",
 }
@@ -64,6 +65,7 @@ class EmployeeProfileRequest(BaseModel):
     employmentStatusCode: str = Field(default="ACTIVE", max_length=30)
     employmentTypeCode: str | None = Field(default=None, max_length=30)
     departmentName: str | None = Field(default=None, max_length=200)
+    departmentCode: str | None = Field(default=None, max_length=50)
     positionName: str | None = Field(default=None, max_length=100)
     jobTitle: str | None = Field(default=None, max_length=100)
     workLocation: str | None = Field(default=None, max_length=200)
@@ -108,7 +110,10 @@ def _camel_key(value: str) -> str:
 def _rows(cursor) -> list[dict[str, Any]]:
     columns = [description[0] for description in cursor.description or []]
     return [
-        {_camel_key(column): _serialize(value) for column, value in zip(columns, row)}
+        enrich_department(
+            {_camel_key(column): _serialize(value) for column, value in zip(columns, row)},
+            allow_legacy_label=True,
+        )
         for row in cursor.fetchall()
     ]
 
@@ -186,6 +191,10 @@ def _profile_values(payload: EmployeeProfileRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="birthDate must not be in the future.")
     if payload.hireDate and payload.retirementDate and payload.retirementDate < payload.hireDate:
         raise HTTPException(status_code=400, detail="retirementDate must not be earlier than hireDate.")
+    try:
+        department = resolve_department(payload.departmentCode, payload.departmentName)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "employeeNo": _optional_text(payload.employeeNo),
         "genderCode": _optional_code(payload.genderCode, _GENDER_CODES, "genderCode"),
@@ -199,7 +208,8 @@ def _profile_values(payload: EmployeeProfileRequest) -> dict[str, Any]:
             _EMPLOYMENT_TYPE_CODES,
             "employmentTypeCode",
         ),
-        "departmentName": _optional_text(payload.departmentName),
+        "departmentName": department["label"] if department else None,
+        "departmentCode": department["code"] if department else None,
         "positionName": _optional_text(payload.positionName),
         "jobTitle": _optional_text(payload.jobTitle),
         "workLocation": _optional_text(payload.workLocation),

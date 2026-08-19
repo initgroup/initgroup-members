@@ -24,6 +24,7 @@
 - 신규 전체 스키마는 `database/INIT_SYSTEM_DDL.sql`, 기존 DB 증분은 `database/INIT_SYSTEM_ALT.sql`, 전체 제거와 데이터 초기화는 각각 `database/INIT_SYSTEM_DROP.sql`, `database/INIT_SYSTEM_TRUC.sql`에서 관리합니다. DROP/TRUC 스크립트는 자동 실행하지 않습니다.
 - 프론트는 빌드 과정이 없는 정적 SPA입니다. `frontend/index.html`이 셸이고 `PageManager`가 `frontend/pages/{page-name}.html`과 `frontend/js/{page-name}.js`를 동적으로 로드합니다.
 - 메뉴와 페이지 파일 등록은 `frontend/config/menu.config.js`의 `MENU_CONFIG`, `PAGE_FILE_CONFIG.htmlPages`, `PAGE_FILE_CONFIG.scriptPages`에서 관리합니다.
+- 내부 임직원 부서의 코드, 표시 라벨, 출력순서는 `frontend/config/departments.json`을 단일 원본으로 관리합니다. 기존 부서 코드를 변경할 때는 `DEPARTMENT_CODE` 데이터 보정과 하위 호환 영향을 함께 확인합니다.
 
 기본 semantic page와 API는 다음과 같습니다.
 

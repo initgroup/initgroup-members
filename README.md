@@ -51,6 +51,7 @@ FastAPI, Oracle 시스템 DB, 정적 HTML/CSS/JavaScript로 구성한 인아이�
 │  ├─ index.html                  # 인증 업무 SPA 셸 (/)
 │  ├─ config/app.config.js        # 프론트 표시 이름과 공통 UI 설정
 │  ├─ config/menu.config.js       # 메뉴와 페이지 리소스 등록
+│  ├─ config/departments.json     # 내부 임직원 부서 코드·라벨·출력순서
 │  ├─ pages/{page-name}.html
 │  ├─ js/{page-name}.js
 │  └─ css/
@@ -121,6 +122,8 @@ Copy-Item .env.example .env
 `APP_NOTICE_FILE_MAX_BYTES`는 multipart 처리 후 handler가 읽는 파일 하나의 한도이며, 들어오는 HTTP body 자체를 차단하는 ingress 한도가 아닙니다. 인터넷 운영 환경에서는 reverse proxy 또는 ASGI 계층의 request-body limit와 사용자별 업로드 quota를 별도로 설정합니다. 현재 첨부 다운로드는 최대 50MB로 제한된 BLOB 전체를 메모리 응답으로 만들므로, 동시 다운로드 수와 서버 메모리도 함께 산정합니다.
 
 브라우저 셸의 표시 이름은 `frontend/config/app.config.js`의 `window.APP_NAME`에서 관리합니다. 서버 환경변수 `APP_NAME`과 같은 이름을 사용하려면 두 값을 함께 변경합니다.
+
+내부 임직원 부서는 `frontend/config/departments.json`의 `code`, `label`, `displayOrder`로 관리합니다. 라벨이나 출력순서 변경은 서버 재시작 후 반영되며, 기존 코드를 변경할 때는 `database/INIT_SYSTEM_ALT.sql`의 데이터 보정 경로도 함께 수정해야 합니다.
 
 ## 개발 서버 실행
 
