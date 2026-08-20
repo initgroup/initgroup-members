@@ -868,17 +868,23 @@ def _validated_plan(
 
 
 @router.get("/references")
-def references(planYear: int = Query(ge=1900, le=2100)):
+def references(
+    planYear: int = Query(ge=1900, le=2100),
+    includeProjects: bool = Query(default=True),
+    includeActualCapacity: bool = Query(default=True),
+):
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            SqlLoader.get_sql("PLANNING_REFERENCE_PROJECTS"),
-            {"planYear": planYear},
-        )
-        projects = _rows(cursor)
+        projects = []
+        if includeProjects:
+            cursor.execute(
+                SqlLoader.get_sql("PLANNING_REFERENCE_PROJECTS"),
+                {"planYear": planYear},
+            )
+            projects = _rows(cursor)
         cursor.execute(
             SqlLoader.get_sql("PLANNING_REFERENCE_USERS"),
             {"planYear": planYear},
@@ -889,11 +895,15 @@ def references(planYear: int = Query(ge=1900, le=2100)):
             {"planYear": planYear},
         )
         company_employees = _rows(cursor)
-        (
-            actual_capacity,
-            actual_worker_names,
-            data_quality_warnings,
-        ) = _actual_capacity(cursor, planYear)
+        actual_capacity = {}
+        actual_worker_names = {}
+        data_quality_warnings = []
+        if includeActualCapacity:
+            (
+                actual_capacity,
+                actual_worker_names,
+                data_quality_warnings,
+            ) = _actual_capacity(cursor, planYear)
         return {
             "status": "success",
             "data": {
@@ -936,7 +946,11 @@ def references(planYear: int = Query(ge=1900, le=2100)):
 
 
 @router.get("")
-def list_scenarios(planYear: int = Query(ge=1900, le=2100)):
+def list_scenarios(
+    planYear: int = Query(ge=1900, le=2100),
+    includeDetail: bool = Query(default=False),
+    scenarioId: int | None = Query(default=None, gt=0),
+):
     conn = None
     cursor = None
     try:
@@ -946,7 +960,20 @@ def list_scenarios(planYear: int = Query(ge=1900, le=2100)):
             SqlLoader.get_sql("PLANNING_SCENARIO_LIST"),
             {"planYear": planYear},
         )
-        return {"status": "success", "data": {"scenarios": _rows(cursor)}}
+        scenarios = _rows(cursor)
+        scenario = None
+        if includeDetail and scenarios:
+            scenario_ids = {int(item["scenarioId"]) for item in scenarios}
+            target_scenario_id = (
+                scenarioId
+                if scenarioId in scenario_ids
+                else int(scenarios[0]["scenarioId"])
+            )
+            scenario = load_scenario_detail(cursor, target_scenario_id)
+        return {
+            "status": "success",
+            "data": {"scenarios": scenarios, "scenario": scenario},
+        }
     except Exception as exc:
         logger.exception("Planning scenario list could not be loaded.")
         _raise_service_error(exc)

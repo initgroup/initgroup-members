@@ -1,7 +1,7 @@
 window.APP_NAME = "INIT Members";
 
 // 정적 자산 변경 배포 시 이 값을 올려 브라우저 캐시 URL을 갱신합니다.
-window.APP_ASSET_VERSION = "20260820.5";
+window.APP_ASSET_VERSION = "20260820.10";
 
 window.DEFAULT_HOMEPAGE_SKIN = "national-intelligence";
 

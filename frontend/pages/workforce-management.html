@@ -71,7 +71,7 @@
                     <button id="workforceManagementWorkerRefreshButton" class="button button-secondary button-small workforce-management-reset-drafts" type="button" data-workforce-saved-refresh title="인력 가용 현황을 저장된 최신 상태로 다시 조회" aria-label="인력 가용 현황 새로고침"><span aria-hidden="true">↻</span></button>
                 </div>
             </div>
-            <label class="field workforce-management-worker-filter"><span class="sr-only">인력 유형</span><select id="workforceManagementWorkerType" class="select"><option value="">전체 인력</option><option value="INTERNAL">내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
+            <label class="field workforce-management-worker-filter"><span class="sr-only">인력·부서</span><select id="workforceManagementWorkerType" class="select"><option value="INTERNAL" selected>내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
             <label class="field workforce-management-worker-search"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
             <div id="workforceManagementWorkers" class="workforce-management-worker-list" aria-live="polite"></div>
         </aside>
@@ -81,7 +81,7 @@
                 <div><h3 id="workforceManagementTimelineTitle">인력·프로젝트·기간 보드</h3><p id="workforceManagementTimelineDescription">인력별 월 셀에서 여러 프로젝트 투입과 가용 상태를 한 번에 비교합니다.</p></div>
                 <div class="workforce-management-timeline-actions">
                     <div id="workforceManagementMatrixWorkerFilters" class="workforce-management-matrix-worker-filters" hidden>
-                        <label class="field"><span class="sr-only">인력 유형</span><select id="workforceManagementMatrixWorkerType" class="select"><option value="">전체 인력</option><option value="INTERNAL">내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
+                        <label class="field"><span class="sr-only">인력·부서</span><select id="workforceManagementMatrixWorkerType" class="select"><option value="INTERNAL" selected>내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
                         <label class="field"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementMatrixWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
                     </div>
                     <label id="workforceManagementProjectSortField" class="field workforce-management-project-sort">

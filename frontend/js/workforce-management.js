@@ -26,6 +26,7 @@
     let establishmentYear = null;
     let boardView = "project";
     let projectSort = "start";
+    let departments = [];
     let workerTypeFilter = "";
     let workerNameFilter = "";
     let boardZoom = 1;
@@ -57,6 +58,44 @@
 
     function pick(row, ...keys) {
         return Common.data.pick(row, ...keys);
+    }
+
+    async function loadDepartmentConfig() {
+        const response = await fetch("/config/departments.json", {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            signal: controller.signal
+        });
+        if (!response.ok) throw new Error("부서 설정을 불러오지 못했습니다.");
+        const payload = await response.json();
+        departments = Array.isArray(payload?.departments)
+            ? [...payload.departments]
+                .filter((department) => department?.code && department?.label)
+                .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder))
+            : [];
+        if (!departments.length) throw new Error("등록된 부서 설정이 없습니다.");
+    }
+
+    function populateWorkerFilterOptions() {
+        const validValues = new Set(["INTERNAL", "PARTNER", ...departments.map((department) => String(department.code))]);
+        const selectedValue = validValues.has(workerTypeFilter) ? workerTypeFilter : "INTERNAL";
+        ["#workforceManagementWorkerType", "#workforceManagementMatrixWorkerType"].forEach((selector) => {
+            const select = query(selector);
+            if (!select) return;
+            select.replaceChildren();
+            [
+                { value: "INTERNAL", label: "내부 임직원" },
+                ...departments.map((department) => ({ value: String(department.code), label: String(department.label) })),
+                { value: "PARTNER", label: "협력업체" }
+            ].forEach((item) => {
+                const option = element("option", "", item.label);
+                option.value = item.value;
+                select.appendChild(option);
+            });
+            select.value = selectedValue;
+        });
+        workerTypeFilter = selectedValue;
     }
 
     function number(value) {
@@ -736,6 +775,8 @@
                 workerKey: key,
                 employeeName: employeeName(assignment),
                 companyName: pick(assignment, "companyName", "COMPANY_NAME") || "소속 미정",
+                departmentName: pick(assignment, "departmentName", "DEPARTMENT_NAME") || "",
+                departmentCode: pick(assignment, "departmentCode", "DEPARTMENT_CODE") || "",
                 workerTypeCode: key.startsWith("USER:") ? "INTERNAL" : "PARTNER"
             });
         }));
@@ -854,9 +895,20 @@
 
     function workerMatchesType(worker, type) {
         if (!type) return true;
+        const key = String(worker.workerKey || "");
         const workerType = String(pick(worker, "workerTypeCode", "WORKER_TYPE_CODE") || "").toUpperCase();
-        if (type === "INTERNAL") return worker.workerKey.startsWith("USER:") || workerType === "INTERNAL";
-        return !worker.workerKey.startsWith("USER:") && workerType !== "INTERNAL";
+        const internal = key.startsWith("USER:") || (
+            !key.startsWith("COMPANY_EMPLOYEE:") && workerType === "INTERNAL"
+        );
+        if (type === "INTERNAL") return internal;
+        if (type === "PARTNER") return !internal;
+        if (!internal) return false;
+        const departmentCode = String(pick(worker, "departmentCode", "DEPARTMENT_CODE") || "").toUpperCase();
+        if (departmentCode) return departmentCode === type;
+        const departmentName = String(pick(worker, "departmentName", "DEPARTMENT_NAME") || "");
+        return departments.some((department) => (
+            String(department.code) === type && String(department.label) === departmentName
+        ));
     }
 
     function applyWorkerFilters(type, name) {
@@ -1272,28 +1324,21 @@
     async function loadDashboard(preferredScenarioId = "") {
         const requestId = ++requestSequence;
         const year = selectedYear();
+        const requestedScenarioId = preferredScenarioId || scenario?.scenarioId || "";
         Common.ui.setInlineStatus(query("#workforceManagementStatus"), `${year}년과 수행기간이 겹치는 프로젝트와 투입정보를 불러오고 있습니다.`);
         query("#workforceManagementRefreshButton").disabled = true;
         try {
             const [confirmedPayload, referencePayload, scenarioPayload] = await Promise.all([
                 Common.api.request(`/project-assignments/workspace?projectYear=${encodeURIComponent(year)}&refreshToken=${Date.now()}`, { signal: controller.signal, showLoading: false }),
-                Common.api.request(`/planning/scenarios/references?planYear=${encodeURIComponent(year)}`, { signal: controller.signal, showLoading: false }),
-                Common.api.request(`/planning/scenarios?planYear=${encodeURIComponent(year)}`, { signal: controller.signal, showLoading: false })
+                Common.api.request(`/planning/scenarios/references?planYear=${encodeURIComponent(year)}&includeProjects=false&includeActualCapacity=false`, { signal: controller.signal, showLoading: false }),
+                Common.api.request(`/planning/scenarios?planYear=${encodeURIComponent(year)}&includeDetail=true${requestedScenarioId ? `&scenarioId=${encodeURIComponent(requestedScenarioId)}` : ""}`, { signal: controller.signal, showLoading: false })
             ]);
             if (requestId !== requestSequence) return false;
             confirmedData = Common.data.get(confirmedPayload) || { projects: [], assignments: [], companies: [] };
             references = Common.data.get(referencePayload) || { workers: [], actualCapacity: [] };
-            scenarios = Common.data.get(scenarioPayload)?.scenarios || [];
-            const currentScenarioId = preferredScenarioId || scenario?.scenarioId || "";
-            const targetScenarioId = scenarios.some((item) => String(item.scenarioId) === String(currentScenarioId))
-                ? currentScenarioId
-                : scenarios[0]?.scenarioId || "";
-            scenario = null;
-            if (targetScenarioId) {
-                const detailPayload = await Common.api.request(`/planning/scenarios/${encodeURIComponent(targetScenarioId)}`, { signal: controller.signal, showLoading: false });
-                if (requestId !== requestSequence) return false;
-                scenario = Common.data.get(detailPayload)?.scenario || null;
-            }
+            const scenarioData = Common.data.get(scenarioPayload) || {};
+            scenarios = scenarioData.scenarios || [];
+            scenario = scenarioData.scenario || null;
             renderAll();
             requestAnimationFrame(() => {
                 applyTimelineScale();
@@ -3200,7 +3245,8 @@
             projectFilter = "all";
             boardView = "project";
             projectSort = "start";
-            workerTypeFilter = "";
+            workerTypeFilter = query("#workforceManagementWorkerType")?.value || "INTERNAL";
+            query("#workforceManagementMatrixWorkerType").value = workerTypeFilter;
             workerNameFilter = "";
             boardZoom = 1;
             boardRangeMode = "default";
@@ -3212,6 +3258,8 @@
             editOrders = new Map();
             editRemovals = new Map();
             activeBoardDrag = null;
+            await loadDepartmentConfig();
+            populateWorkerFilterOptions();
             establishmentYear = await loadEstablishmentYear();
             initializeYears(context.routeContext?.planYear || context.routeContext?.projectYear);
             bindEvents();
@@ -3278,6 +3326,7 @@
             projectFilter = "all";
             editorOpening = false;
             establishmentYear = null;
+            departments = [];
             boardView = "project";
             projectSort = "start";
             workerTypeFilter = "";
