@@ -43,6 +43,10 @@
                 <button class="is-active" type="button" data-workforce-view="project" aria-pressed="true">프로젝트</button>
                 <button type="button" data-workforce-view="worker" aria-pressed="false">인력</button>
             </div>
+            <div class="workforce-management-board-query" aria-label="보드 조회 조건">
+                <label class="field"><span>연도</span><select id="workforceManagementBoardYear" class="select"></select></label>
+                <label class="field"><span>프로젝트</span><select id="workforceManagementBoardProject" class="select"><option value="">전체 프로젝트</option></select></label>
+            </div>
             <div class="workforce-management-board-tools">
                 <span id="workforceManagementEditGuide" class="workforce-management-edit-guide"><strong>인력 배치 방법</strong> 편집 모드를 켠 후 왼쪽 인력을 프로젝트로 드래그하세요.</span>
                 <button id="workforceManagementFullRangeButton" class="button button-secondary button-small" type="button" aria-pressed="false" title="조회된 프로젝트와 투입인력의 전체 기간을 보드 너비에 맞춰 표시합니다."><span aria-hidden="true">↔</span> 전체기간</button>

@@ -426,6 +426,16 @@
         return String(query("#workforceManagementProject")?.value || "");
     }
 
+    function querySelects(type) {
+        return type === "year"
+            ? [query("#workforceManagementYear"), query("#workforceManagementBoardYear")].filter(Boolean)
+            : [query("#workforceManagementProject"), query("#workforceManagementBoardProject")].filter(Boolean);
+    }
+
+    function syncQuerySelects(type, value) {
+        querySelects(type).forEach((select) => { select.value = String(value ?? ""); });
+    }
+
     function yearMonths() {
         const year = selectedYear();
         return Array.from({ length: MONTH_COUNT }, (_item, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
@@ -761,8 +771,8 @@
     }
 
     function renderProjectOptions() {
-        const select = query("#workforceManagementProject");
-        const currentValue = String(select.value || "");
+        const selects = querySelects("project");
+        const currentValue = String(query("#workforceManagementProject")?.value || "");
         const projectsById = new Map();
         (confirmedData.projects || []).forEach((project) => {
             const projectId = pick(project, "projectId", "PROJECT_ID");
@@ -774,19 +784,21 @@
             String(pick(left, "projectName", "PROJECT_NAME") || "")
                 .localeCompare(String(pick(right, "projectName", "PROJECT_NAME") || ""), "ko")
         ));
-        select.replaceChildren();
-        const empty = element("option", "", projects.length ? "전체 프로젝트" : "등록된 프로젝트 없음");
-        empty.value = "";
-        select.appendChild(empty);
-        projects.forEach((project) => {
-            const projectId = pick(project, "projectId", "PROJECT_ID");
-            const projectName = pick(project, "projectName", "PROJECT_NAME") || "프로젝트명 미정";
-            const customerName = pick(project, "customerName", "CUSTOMER_NAME");
-            const option = element("option", "", customerName ? `${projectName} · ${customerName}` : projectName);
-            option.value = projectId;
-            select.appendChild(option);
+        selects.forEach((select) => {
+            select.replaceChildren();
+            const empty = element("option", "", projects.length ? "전체 프로젝트" : "등록된 프로젝트 없음");
+            empty.value = "";
+            select.appendChild(empty);
+            projects.forEach((project) => {
+                const projectId = pick(project, "projectId", "PROJECT_ID");
+                const projectName = pick(project, "projectName", "PROJECT_NAME") || "프로젝트명 미정";
+                const customerName = pick(project, "customerName", "CUSTOMER_NAME");
+                const option = element("option", "", customerName ? `${projectName} · ${customerName}` : projectName);
+                option.value = projectId;
+                select.appendChild(option);
+            });
+            if (Array.from(select.options).some((option) => option.value === currentValue)) select.value = currentValue;
         });
-        if (Array.from(select.options).some((option) => option.value === currentValue)) select.value = currentValue;
     }
 
     function renderMetrics() {
@@ -1073,11 +1085,36 @@
                 bar.style.gridColumn = `${position.start} / span ${position.span}`;
                 bar.style.gridRow = String(index + 2);
                 decorateAssignmentNode(bar, lane, assignment);
-                bar.append(
+                const worker = workerByKey(workerKey(assignment)) || assignment;
+                const gradeCode = String(pick(worker, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase();
+                const grade = TECHNICAL_GRADE_LABELS[gradeCode] || "등급 미지정";
+                const positionName = pick(worker, "positionName", "POSITION_NAME") || "직급 미지정";
+                const roleName = pick(assignment, "projectRoleName", "PROJECT_ROLE_NAME") || "역할 미지정";
+                const person = element("div", "workforce-management-assignment-person");
+                const photo = workerPhoto(worker);
+                photo.classList.add("is-assignment");
+                const personCopy = element("div", "workforce-management-assignment-person-copy");
+                personCopy.append(
                     element("strong", "", employeeName(assignment)),
-                    element("small", "", `${assignmentStatusLabel(lane, assignment)} · ${fixed(pick(assignment, "totalMm", "TOTAL_MM"))} M/M`),
-                    element("span", "workforce-management-assignment-settings", isEditDraft(assignment) ? "✎" : "⚙")
+                    element("small", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 미지정")
                 );
+                const metadata = element("div", "workforce-management-assignment-metadata");
+                [
+                    `등급 ${grade}`,
+                    `직급 ${positionName}`,
+                    `역할 ${roleName}`,
+                    `${assignmentStatusLabel(lane, assignment)} · ${fixed(pick(assignment, "totalMm", "TOTAL_MM"))} M/M`
+                ].forEach((text) => metadata.appendChild(element("span", "", text)));
+                const detail = element("span", "workforce-management-assignment-worker-detail", "상세");
+                detail.dataset.workerDetail = workerKey(assignment);
+                detail.setAttribute("role", "button");
+                detail.setAttribute("tabindex", "0");
+                detail.setAttribute("aria-label", `${employeeName(assignment)} 인력 상세정보`);
+                detail.title = "인력 상세정보";
+                metadata.appendChild(detail);
+                personCopy.appendChild(metadata);
+                person.append(photo, personCopy);
+                bar.append(person, element("span", "workforce-management-assignment-settings", isEditDraft(assignment) ? "✎" : "⚙"));
                 if (bar.classList.contains("is-pending-order")) {
                     const orderChange = element("span", "workforce-management-assignment-order-change", "↕");
                     orderChange.title = "순서 변경 · 저장 대기";
@@ -2533,14 +2570,38 @@
             : currentYear;
         const targetYear = Math.max(minimumYear, requestedYear);
         const maximumYear = Math.max(currentYear + 4, targetYear, minimumYear);
-        const select = query("#workforceManagementYear");
-        select.replaceChildren();
-        for (let year = maximumYear; year >= minimumYear; year -= 1) {
-            const option = element("option", "", `${year}년`);
-            option.value = year;
-            select.appendChild(option);
+        querySelects("year").forEach((select) => {
+            select.replaceChildren();
+            for (let year = maximumYear; year >= minimumYear; year -= 1) {
+                const option = element("option", "", `${year}년`);
+                option.value = year;
+                select.appendChild(option);
+            }
+            select.value = String(targetYear);
+        });
+    }
+
+    async function changeDashboardYear(source) {
+        const nextYear = String(source.value || "");
+        const previousYear = querySelects("year").find((select) => select !== source)?.value || String(selectedYear());
+        if (hasMainEditChanges()) {
+            const confirmed = await Common.ui.confirm(
+                "저장하지 않은 변경사항을 취소하고 조회 연도를 변경하시겠습니까?",
+                { title: "조회조건 변경", confirmText: "변경사항 취소 후 조회", danger: true }
+            );
+            if (!confirmed) {
+                source.value = previousYear;
+                return;
+            }
+            discardMainEditChanges({ render: false });
         }
-        select.value = String(targetYear);
+        syncQuerySelects("year", nextYear);
+        await loadDashboard(scenario?.scenarioId || "");
+    }
+
+    function changeDashboardProject(source) {
+        syncQuerySelects("project", source.value);
+        renderAll();
     }
 
     function setBoardView(nextView) {
@@ -2842,8 +2903,14 @@
     }
 
     function bindEvents() {
-        query("#workforceManagementYear").addEventListener("change", () => loadDashboard(), { signal: controller.signal });
-        query("#workforceManagementProject").addEventListener("change", renderAll, { signal: controller.signal });
+        querySelects("year").forEach((select) => {
+            select.addEventListener("change", () => {
+                changeDashboardYear(select).catch((error) => Common.ui.toast(error.message || "조회 연도를 변경하지 못했습니다.", "error"));
+            }, { signal: controller.signal });
+        });
+        querySelects("project").forEach((select) => {
+            select.addEventListener("change", () => changeDashboardProject(select), { signal: controller.signal });
+        });
         root.querySelectorAll("[data-workforce-saved-refresh]").forEach((button) => {
             button.addEventListener("click", () => {
                 resetBoardToSavedState(button).catch((error) => Common.ui.toast(error.message || "저장된 상태를 다시 조회하지 못했습니다.", "error"));
@@ -2989,6 +3056,14 @@
             }
         }, { signal: controller.signal });
         root.addEventListener("keydown", (event) => {
+            const workerDetail = event.target.closest("[data-worker-detail]");
+            if (workerDetail && ["Enter", " "].includes(event.key)) {
+                event.preventDefault();
+                event.stopPropagation();
+                const worker = workerByKey(workerDetail.dataset.workerDetail);
+                if (worker) openWorkerDetail(worker);
+                return;
+            }
             const remove = event.target.closest("[data-remove-assignment]");
             if (!remove || !["Enter", " "].includes(event.key)) return;
             event.preventDefault();
