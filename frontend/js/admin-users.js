@@ -9,6 +9,7 @@
     let selectedUserId = null;
     let pendingPasswordResetUserId = null;
     let localPhotoUrl = null;
+    let photoPreviewRequestId = 0;
     let userPage = 1;
     let userTotal = 0;
     let userTotalPages = 1;
@@ -100,7 +101,8 @@
         localPhotoUrl = null;
     }
 
-    function setPhotoPreview(row = {}) {
+    async function setPhotoPreview(row = {}) {
+        const requestId = ++photoPreviewRequestId;
         clearLocalPhotoUrl();
         const id = userId(row);
         const hasPhoto = Boolean(value(row, "photoFileName", "PHOTO_FILE_NAME"));
@@ -112,9 +114,30 @@
         query("#deleteUserPhotoButton").hidden = !id || !hasPhoto;
         if (id && hasPhoto) {
             const version = encodeURIComponent(value(row, "photoUpdatedAt", "PHOTO_UPDATED_AT") || Date.now());
-            image.src = `/api/admin/users/${encodeURIComponent(id)}/photo?v=${version}`;
-            image.hidden = false;
-            placeholder.hidden = true;
+            image.removeAttribute("src");
+            image.hidden = true;
+            placeholder.hidden = false;
+            try {
+                const photoBlob = await Common.api.blob(
+                    `/admin/users/${encodeURIComponent(id)}/photo?v=${version}`,
+                    { signal: controller.signal, showLoading: false }
+                );
+                if (requestId !== photoPreviewRequestId) return;
+                localPhotoUrl = URL.createObjectURL(photoBlob);
+                image.src = localPhotoUrl;
+                image.hidden = false;
+                placeholder.hidden = true;
+            } catch (error) {
+                if (error?.name === "AbortError" || requestId !== photoPreviewRequestId) return;
+                image.removeAttribute("src");
+                image.hidden = true;
+                placeholder.hidden = false;
+                Common.ui.setInlineStatus(
+                    query("#userEditorStatus"),
+                    error.message || "저장된 프로필 사진을 불러오지 못했습니다.",
+                    "error"
+                );
+            }
         } else {
             image.removeAttribute("src");
             image.hidden = true;
@@ -415,6 +438,7 @@
     function previewSelectedPhoto() {
         const file = query("#userPhotoFile")?.files?.[0];
         if (!file) return;
+        photoPreviewRequestId += 1;
         clearLocalPhotoUrl();
         localPhotoUrl = URL.createObjectURL(file);
         query("#userPhotoPreview").src = localPhotoUrl;
@@ -667,6 +691,7 @@
         },
 
         destroy() {
+            photoPreviewRequestId += 1;
             controller?.abort();
             controller = null;
             root = null;

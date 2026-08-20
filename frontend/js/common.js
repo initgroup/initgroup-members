@@ -130,6 +130,40 @@
         }
     }
 
+    async function requestBlob(path, options = {}) {
+        const {
+            signal,
+            showLoading: useLoading = true,
+            loadingMessage,
+            credentials = "include"
+        } = options;
+
+        if (useLoading) showLoading(loadingMessage);
+        try {
+            const response = await fetch(apiUrl(path), {
+                method: "GET",
+                credentials,
+                signal,
+                headers: { Accept: "image/*" }
+            });
+            window.App?.touchSessionFromResponse?.(response);
+            if (!response.ok) {
+                const payload = await parseResponse(response);
+                if (response.status === 401) {
+                    window.dispatchEvent(new CustomEvent("app:unauthorized", { detail: { path } }));
+                }
+                throw new ApiError(
+                    formatError(payload, `요청에 실패했습니다. (HTTP ${response.status})`),
+                    response.status,
+                    payload
+                );
+            }
+            return response.blob();
+        } finally {
+            if (useLoading) hideLoading();
+        }
+    }
+
     function getData(payload) {
         if (payload && Object.prototype.hasOwnProperty.call(payload, "data")) {
             return payload.data;
@@ -421,6 +455,7 @@
         },
         api: {
             request,
+            blob: requestBlob,
             download,
             url: apiUrl,
             query: buildQuery
