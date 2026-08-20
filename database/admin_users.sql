@@ -12,6 +12,7 @@ SELECT COUNT(*) AS TOTAL_COUNT
         OR UPPER(POSITION_NAME) LIKE :keyword
         OR UPPER(JOB_TITLE) LIKE :keyword
        )
+   AND (:employmentTypeCode = 'ALL' OR EMPLOYMENT_TYPE_CODE = :employmentTypeCode)
    AND (:useYn = 'ALL' OR USE_YN = :useYn)
 ;
 
@@ -59,6 +60,7 @@ SELECT USER_ID
         OR UPPER(POSITION_NAME) LIKE :keyword
         OR UPPER(JOB_TITLE) LIKE :keyword
        )
+   AND (:employmentTypeCode = 'ALL' OR EMPLOYMENT_TYPE_CODE = :employmentTypeCode)
    AND (:useYn = 'ALL' OR USE_YN = :useYn)
  ORDER BY EMPLOYEE_NO ASC NULLS LAST
         , USER_NAME ASC

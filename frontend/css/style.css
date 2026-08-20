@@ -2458,7 +2458,7 @@ body.auth-screen .page-host {
 }
 
 .admin-user-table {
-    min-width: 1500px;
+    min-width: 1600px;
 }
 
 .admin-user-table tbody tr[data-user-id] {
@@ -4854,8 +4854,24 @@ body.auth-screen .page-host {
     --workforce-label-width: 220px;
     --workforce-month-width: 58px;
     --workforce-month-count: 12;
+    position: relative;
     min-width: 0;
     margin-top: 12px;
+}
+
+.workforce-management-board-loading {
+    position: absolute;
+    z-index: 20;
+    inset: 0;
+    display: none;
+    border-radius: 12px;
+    background: rgb(15 23 42 / 0.24);
+    backdrop-filter: blur(2px);
+    place-items: center;
+}
+
+.workforce-management-board.is-saving > .workforce-management-board-loading {
+    display: grid;
 }
 
 .workforce-management-board[data-zoom="compact"] {

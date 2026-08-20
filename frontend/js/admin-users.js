@@ -14,6 +14,10 @@
     let userTotalPages = 1;
     let departments = [];
     const EMPLOYMENT_STATUS_LABELS = { ACTIVE: "재직", LEAVE: "휴직", RETIRED: "퇴직" };
+    const EMPLOYMENT_TYPE_LABELS = {
+        REGULAR: "정규직", CONTRACT: "계약직", EXECUTIVE: "임원",
+        INTERN: "인턴", DISPATCH: "파견직", OTHER: "기타"
+    };
     const TECHNICAL_GRADE_LABELS = {
         PROFESSIONAL_ENGINEER: "기술사", SPECIAL: "특급", ADVANCED: "고급",
         INTERMEDIATE: "중급", BEGINNER: "초급"
@@ -184,7 +188,7 @@
         if (!users.length) {
             const row = Common.dom.element("tr");
             const empty = cell("조회된 임직원이 없습니다.");
-            empty.colSpan = 14;
+            empty.colSpan = 15;
             empty.style.textAlign = "center";
             row.appendChild(empty);
             body.appendChild(row);
@@ -198,6 +202,9 @@
             const passwordChangeYn = String(value(row, "passwordChangeYn", "PASSWORD_CHANGE_YN") || "N").toUpperCase();
             const employmentStatus = String(
                 value(row, "employmentStatusCode", "EMPLOYMENT_STATUS_CODE") || "ACTIVE"
+            ).toUpperCase();
+            const employmentType = String(
+                value(row, "employmentTypeCode", "EMPLOYMENT_TYPE_CODE") || ""
             ).toUpperCase();
             const tableRow = Common.dom.element("tr", {
                 attrs: { tabindex: "0", "data-user-id": String(id), "aria-selected": "false" }
@@ -213,6 +220,7 @@
                 cell(TECHNICAL_GRADE_LABELS[String(value(row, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase()] || "-"),
                 cell(value(row, "careerMonths", "CAREER_MONTHS") ?? "-"),
                 cell(EMPLOYMENT_STATUS_LABELS[employmentStatus] || employmentStatus),
+                cell(EMPLOYMENT_TYPE_LABELS[employmentType] || "-"),
                 cell(value(row, "email", "EMAIL") || "-"),
                 cell(role === "ADMIN" ? "관리자" : "사용자"),
                 cell(useYn === "Y" ? "사용" : "중지"),
@@ -265,6 +273,7 @@
         try {
             const queryString = Common.api.query({
                 keyword: query("#userKeyword").value.trim(),
+                employmentTypeCode: query("#userEmploymentTypeFilter").value,
                 useYn: query("#userUseYn").value,
                 page: userPage,
                 pageSize: query("#userLimit").value

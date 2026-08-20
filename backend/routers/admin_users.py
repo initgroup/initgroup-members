@@ -128,6 +128,16 @@ def _normalize_use_yn(value: str, *, allow_all: bool = False) -> str:
     return normalized
 
 
+def _normalize_employment_type(value: str, *, allow_all: bool = False) -> str:
+    normalized = str(value or "").strip().upper()
+    allowed = set(_EMPLOYMENT_TYPE_CODES)
+    if allow_all:
+        allowed.add("ALL")
+    if normalized not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported employmentTypeCode.")
+    return normalized
+
+
 def _temporary_password(length: int = _TEMPORARY_PASSWORD_LENGTH) -> str:
     alphabet = string.ascii_letters + string.digits + _TEMPORARY_PASSWORD_SPECIALS
     random_part = "".join(secrets.choice(alphabet) for _ in range(max(8, length - 4)))
@@ -333,6 +343,7 @@ def create_user(payload: UserCreateRequest):
 @router.get("")
 def list_users(
     keyword: str = Query("", max_length=200),
+    employmentTypeCode: str = Query("ALL", max_length=30),
     useYn: str = Query("ALL"),
     page: int = Query(1, ge=1, le=100_000),
     pageSize: int = Query(100, ge=1, le=100),
@@ -340,6 +351,7 @@ def list_users(
     normalized_keyword = keyword.strip().upper()
     filters = {
         "keyword": f"%{normalized_keyword}%" if normalized_keyword else None,
+        "employmentTypeCode": _normalize_employment_type(employmentTypeCode, allow_all=True),
         "useYn": _normalize_use_yn(useYn, allow_all=True),
     }
     conn = None

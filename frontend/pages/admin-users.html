@@ -13,6 +13,18 @@
                 <input id="userKeyword" class="input" type="search" maxlength="200" placeholder="사번, 이름, 부서, 직급, 직책 또는 이메일">
             </label>
             <label class="field">
+                <span>고용형태</span>
+                <select id="userEmploymentTypeFilter" class="select">
+                    <option value="">전체</option>
+                    <option value="REGULAR">정규직</option>
+                    <option value="CONTRACT">계약직</option>
+                    <option value="EXECUTIVE">임원</option>
+                    <option value="INTERN">인턴</option>
+                    <option value="DISPATCH">파견직</option>
+                    <option value="OTHER">기타</option>
+                </select>
+            </label>
+            <label class="field">
                 <span>사용 여부</span>
                 <select id="userUseYn" class="select">
                     <option value="">전체</option>
@@ -39,6 +51,7 @@
                         <th scope="col">기술등급</th>
                         <th scope="col">경력월수</th>
                         <th scope="col">재직상태</th>
+                        <th scope="col">고용형태</th>
                         <th scope="col">이메일</th>
                         <th scope="col">권한</th>
                         <th scope="col">사용</th>

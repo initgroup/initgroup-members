@@ -38,6 +38,15 @@
     </section>
 
     <section id="workforceManagementBoard" class="workforce-management-board" aria-labelledby="workforceManagementTimelineTitle" data-view="project" data-zoom="normal">
+        <div class="workforce-management-board-loading" role="status" aria-live="polite">
+            <div class="loading-card">
+                <span class="loading-spinner" aria-hidden="true"></span>
+                <div>
+                    <strong>변경사항을 저장하고 있습니다</strong>
+                    <span>저장이 완료될 때까지 잠시만 기다려 주세요.</span>
+                </div>
+            </div>
+        </div>
         <div class="workforce-management-board-toolbar">
             <div class="workforce-management-board-views" role="group" aria-label="대시보드 표현 유형">
                 <button class="is-active" type="button" data-workforce-view="project" aria-pressed="true">프로젝트</button>
@@ -71,7 +80,7 @@
                     <button id="workforceManagementWorkerRefreshButton" class="button button-secondary button-small workforce-management-reset-drafts" type="button" data-workforce-saved-refresh title="인력 가용 현황을 저장된 최신 상태로 다시 조회" aria-label="인력 가용 현황 새로고침"><span aria-hidden="true">↻</span></button>
                 </div>
             </div>
-            <label class="field workforce-management-worker-filter"><span class="sr-only">인력·부서</span><select id="workforceManagementWorkerType" class="select"><option value="INTERNAL" selected>내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
+            <label class="field workforce-management-worker-filter"><span class="sr-only">고용형태·부서</span><select id="workforceManagementWorkerType" class="select"><option value="ALL">-전체인력-</option><option value="INTERNAL">내부 임직원(전체)</option><option value="INTERNAL_REGULAR" selected>내부 임직원(정규직)</option><option value="INTERNAL_NON_REGULAR">내부 임직원(정규직외)</option><option value="PARTNER">협력업체</option></select></label>
             <label class="field workforce-management-worker-search"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
             <div id="workforceManagementWorkers" class="workforce-management-worker-list" aria-live="polite"></div>
         </aside>
@@ -81,7 +90,7 @@
                 <div><h3 id="workforceManagementTimelineTitle">인력·프로젝트·기간 보드</h3><p id="workforceManagementTimelineDescription">인력별 월 셀에서 여러 프로젝트 투입과 가용 상태를 한 번에 비교합니다.</p></div>
                 <div class="workforce-management-timeline-actions">
                     <div id="workforceManagementMatrixWorkerFilters" class="workforce-management-matrix-worker-filters" hidden>
-                        <label class="field"><span class="sr-only">인력·부서</span><select id="workforceManagementMatrixWorkerType" class="select"><option value="INTERNAL" selected>내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
+                        <label class="field"><span class="sr-only">고용형태·부서</span><select id="workforceManagementMatrixWorkerType" class="select"><option value="ALL">-전체인력-</option><option value="INTERNAL">내부 임직원(전체)</option><option value="INTERNAL_REGULAR" selected>내부 임직원(정규직)</option><option value="INTERNAL_NON_REGULAR">내부 임직원(정규직외)</option><option value="PARTNER">협력업체</option></select></label>
                         <label class="field"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementMatrixWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
                     </div>
                     <label id="workforceManagementProjectSortField" class="field workforce-management-project-sort">

@@ -78,14 +78,17 @@
     }
 
     function populateWorkerFilterOptions() {
-        const validValues = new Set(["INTERNAL", "PARTNER", ...departments.map((department) => String(department.code))]);
-        const selectedValue = validValues.has(workerTypeFilter) ? workerTypeFilter : "INTERNAL";
+        const validValues = new Set(["ALL", "INTERNAL", "INTERNAL_REGULAR", "INTERNAL_NON_REGULAR", "PARTNER", ...departments.map((department) => String(department.code))]);
+        const selectedValue = validValues.has(workerTypeFilter) ? workerTypeFilter : "INTERNAL_REGULAR";
         ["#workforceManagementWorkerType", "#workforceManagementMatrixWorkerType"].forEach((selector) => {
             const select = query(selector);
             if (!select) return;
             select.replaceChildren();
             [
-                { value: "INTERNAL", label: "내부 임직원" },
+                { value: "ALL", label: "-전체인력-" },
+                { value: "INTERNAL", label: "내부 임직원(전체)" },
+                { value: "INTERNAL_REGULAR", label: "내부 임직원(정규직)" },
+                { value: "INTERNAL_NON_REGULAR", label: "내부 임직원(정규직외)" },
                 ...departments.map((department) => ({ value: String(department.code), label: String(department.label) })),
                 { value: "PARTNER", label: "협력업체" }
             ].forEach((item) => {
@@ -894,13 +897,16 @@
     }
 
     function workerMatchesType(worker, type) {
-        if (!type) return true;
+        if (!type || type === "ALL") return true;
         const key = String(worker.workerKey || "");
         const workerType = String(pick(worker, "workerTypeCode", "WORKER_TYPE_CODE") || "").toUpperCase();
         const internal = key.startsWith("USER:") || (
             !key.startsWith("COMPANY_EMPLOYEE:") && workerType === "INTERNAL"
         );
+        const employmentType = String(pick(worker, "employmentTypeCode", "EMPLOYMENT_TYPE_CODE") || "").toUpperCase();
         if (type === "INTERNAL") return internal;
+        if (type === "INTERNAL_REGULAR") return internal && employmentType === "REGULAR";
+        if (type === "INTERNAL_NON_REGULAR") return internal && employmentType !== "REGULAR";
         if (type === "PARTNER") return !internal;
         if (!internal) return false;
         const departmentCode = String(pick(worker, "departmentCode", "DEPARTMENT_CODE") || "").toUpperCase();
@@ -3245,7 +3251,7 @@
             projectFilter = "all";
             boardView = "project";
             projectSort = "start";
-            workerTypeFilter = query("#workforceManagementWorkerType")?.value || "INTERNAL";
+            workerTypeFilter = query("#workforceManagementWorkerType")?.value || "INTERNAL_REGULAR";
             query("#workforceManagementMatrixWorkerType").value = workerTypeFilter;
             workerNameFilter = "";
             boardZoom = 1;
