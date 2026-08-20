@@ -4767,6 +4767,12 @@ body.auth-screen .page-host {
     gap: 12px;
 }
 
+.workforce-management-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .workforce-management-section-heading h3,
 .workforce-management-section-heading p {
     margin: 0;
@@ -4964,6 +4970,25 @@ body.auth-screen .page-host {
     gap: 8px;
 }
 
+.workforce-management-reset-drafts {
+    min-width: 34px;
+    padding-inline: 8px;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+[data-workforce-saved-refresh].is-refreshing > span {
+    display: inline-block;
+    animation: spin 0.75s linear infinite;
+}
+
+[data-workforce-saved-refresh].is-refreshing {
+    border-color: var(--color-primary);
+    color: var(--color-primary-dark);
+    background: var(--color-primary-soft);
+    cursor: wait;
+}
+
 .workforce-management-edit-mode-button:hover,
 .workforce-management-edit-mode-button:focus-visible {
     border-color: #d97706;
@@ -5098,19 +5123,26 @@ html.has-workforce-board-maximized {
 
 .workforce-management-board.is-maximized .workforce-management-dashboard-grid {
     min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+    overflow: hidden;
 }
 
 .workforce-management-board.is-maximized .workforce-management-worker-panel,
 .workforce-management-board.is-maximized .workforce-management-timeline-panel {
+    display: flex;
+    flex-direction: column;
     min-height: 0;
-    height: 100%;
+    height: auto;
     overflow: hidden;
 }
 
 .workforce-management-board.is-maximized .workforce-management-worker-list,
 .workforce-management-board.is-maximized .workforce-management-timeline-scroll {
-    max-height: calc(100vh - 145px);
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 0;
     overflow: auto;
 }
 
@@ -6095,6 +6127,33 @@ html.has-workforce-board-maximized {
 .workforce-management-assignment.is-pending-removal small {
     text-decoration: line-through;
     text-decoration-thickness: 2px;
+}
+
+.workforce-management-assignment.is-pending-order {
+    border-color: #8b5cf6;
+    background: #f5f3ff;
+    box-shadow: 0 0 0 2px rgb(139 92 246 / 0.16);
+}
+
+.workforce-management-board.is-editing .workforce-management-assignment.is-pending-order {
+    padding-right: 98px;
+}
+
+.workforce-management-assignment-order-change {
+    position: absolute;
+    top: 50%;
+    right: 66px;
+    display: grid;
+    width: 26px;
+    height: 26px;
+    border: 1px solid #a78bfa;
+    border-radius: 7px;
+    color: #6d28d9;
+    background: #fff;
+    transform: translateY(-50%);
+    place-items: center;
+    font-size: 0.9rem;
+    font-weight: 900;
 }
 
 .workforce-management-assignment-remove.is-undo {

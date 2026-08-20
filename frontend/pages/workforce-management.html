@@ -6,7 +6,7 @@
             <p>선택 연도와 수행기간이 겹치는 확정·계획 프로젝트 및 가용 인력을 한 화면에서 검토합니다.</p>
         </div>
         <div class="workforce-management-header-actions">
-            <button id="workforceManagementRefreshButton" class="button button-secondary" type="button"><span aria-hidden="true">↻</span> 새로고침</button>
+            <button id="workforceManagementRefreshButton" class="button button-secondary" type="button" data-workforce-saved-refresh><span aria-hidden="true">↻</span> 새로고침</button>
         </div>
     </header>
 
@@ -62,7 +62,10 @@
         <aside class="workforce-management-worker-panel" aria-labelledby="workforceManagementWorkerTitle">
             <div class="workforce-management-section-heading">
                 <div><h3 id="workforceManagementWorkerTitle">인력 가용 현황</h3><p>월별 총 M/M과 프로젝트 중복 여부</p></div>
-                <span id="workforceManagementWorkerCount" class="count-badge">0명</span>
+                <div class="workforce-management-heading-actions">
+                    <span id="workforceManagementWorkerCount" class="count-badge">0명</span>
+                    <button id="workforceManagementWorkerRefreshButton" class="button button-secondary button-small workforce-management-reset-drafts" type="button" data-workforce-saved-refresh title="인력 가용 현황을 저장된 최신 상태로 다시 조회" aria-label="인력 가용 현황 새로고침"><span aria-hidden="true">↻</span></button>
+                </div>
             </div>
             <label class="field workforce-management-worker-filter"><span class="sr-only">인력 유형</span><select id="workforceManagementWorkerType" class="select"><option value="">전체 인력</option><option value="INTERNAL">내부 임직원</option><option value="PARTNER">협력업체</option></select></label>
             <label class="field workforce-management-worker-search"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
@@ -86,6 +89,7 @@
                     </label>
                     <div class="workforce-management-legend" aria-label="타임라인 범례"><span class="is-confirmed">확정 투입</span><span class="is-planning">계획 투입</span><span class="is-overlap">중복 알림</span></div>
                     <button id="workforceManagementApplyDraftsButton" class="button button-primary button-small" type="button" hidden>변경사항 저장</button>
+                    <button id="workforceManagementResetDraftsButton" class="button button-secondary button-small workforce-management-reset-drafts" type="button" data-workforce-saved-refresh title="저장하지 않은 변경을 취소하고 저장된 상태로 다시 조회" aria-label="보드 새로고침"><span aria-hidden="true">↻</span></button>
                     <button id="workforceManagementEditModeButton" class="button workforce-management-edit-mode-button" type="button"
                             aria-pressed="false" aria-describedby="workforceManagementEditGuide"
                             title="편집 모드를 켜면 인력 추가, 배치 순서 변경 및 일괄 저장을 사용할 수 있습니다.">

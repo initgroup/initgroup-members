@@ -23,6 +23,13 @@
         return `${API_PREFIX}${value.startsWith("/") ? value : `/${value}`}`;
     }
 
+    function assetUrl(path) {
+        const value = String(path || "");
+        const version = String(window.APP_ASSET_VERSION || "").trim();
+        if (!version) return value;
+        return `${value}${value.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
+    }
+
     function formatError(payload, fallback = "요청을 처리하지 못했습니다.") {
         if (!payload) return fallback;
         if (typeof payload === "string") return payload || fallback;
@@ -408,6 +415,10 @@
 
     window.Common = {
         ApiError,
+        asset: {
+            url: assetUrl,
+            version: String(window.APP_ASSET_VERSION || "")
+        },
         api: {
             request,
             download,

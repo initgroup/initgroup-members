@@ -101,7 +101,16 @@
         setValue("#adminProjectCompanyShareRate", 0);
         query("#adminProjectCompanyForm").dataset.versionToken = "";
         query("#deleteAdminProjectCompanyButton").hidden = true;
+        syncProjectCompanySelection();
         Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), "");
+    }
+
+    function syncProjectCompanySelection(selectedId = query("#adminProjectCompanyId")?.value || "") {
+        root.querySelectorAll("#adminProjectCompanyTableBody [data-project-company-id]").forEach((row) => {
+            const selected = Boolean(selectedId) && String(row.dataset.projectCompanyId) === String(selectedId);
+            row.classList.toggle("is-selected", selected);
+            row.setAttribute("aria-selected", String(selected));
+        });
     }
 
     function fillProjectCompanyForm(company) {
@@ -112,6 +121,7 @@
         setValue("#adminProjectCompanyNote", value(company, "note", "NOTE") || "");
         query("#adminProjectCompanyForm").dataset.versionToken = value(company, "versionToken", "VERSION_TOKEN") || "";
         query("#deleteAdminProjectCompanyButton").hidden = false;
+        syncProjectCompanySelection();
         Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), `${value(company, "companyName", "COMPANY_NAME") || "참여회사"} 정보를 수정하고 있습니다.`);
     }
 
@@ -131,7 +141,8 @@
             const row = Common.dom.element("tr", {
                 attrs: {
                     tabindex: "0",
-                    "data-project-company-id": value(company, "projectCompanyId", "PROJECT_COMPANY_ID")
+                    "data-project-company-id": value(company, "projectCompanyId", "PROJECT_COMPANY_ID"),
+                    "aria-selected": "false"
                 }
             });
             const master = masterCompanies.find((item) => String(value(item, "companyId", "COMPANY_ID")) === String(value(company, "companyId", "COMPANY_ID")));

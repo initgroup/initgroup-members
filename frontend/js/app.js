@@ -295,7 +295,7 @@
         record.promise = new Promise((resolve, reject) => {
             const script = document.createElement("script");
             record.script = script;
-            script.src = `./js/${encodeURIComponent(pageCode)}.js`;
+            script.src = Common.asset.url(`./js/${encodeURIComponent(pageCode)}.js`);
             script.async = true;
             script.dataset.pageScript = pageCode;
             script.addEventListener("load", () => {
@@ -348,7 +348,7 @@
     }
 
     async function loadPageHtml(pageCode, signal) {
-        const response = await fetch(`./pages/${encodeURIComponent(pageCode)}.html`, {
+        const response = await fetch(Common.asset.url(`./pages/${encodeURIComponent(pageCode)}.html`), {
             method: "GET",
             credentials: "same-origin",
             cache: "no-cache",

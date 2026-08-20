@@ -213,6 +213,26 @@
         return editRemovals.has(String(identity || ""));
     }
 
+    function mainEditChangeCount() {
+        return editDrafts.length + editOrders.size + editRemovals.size;
+    }
+
+    function hasMainEditChanges() {
+        return mainEditChangeCount() > 0 || Boolean(quickContext);
+    }
+
+    function discardMainEditChanges({ render = true } = {}) {
+        if (quickContext) closeQuickDialog();
+        editDrafts = [];
+        editDraftSequence = 0;
+        editOrders.clear();
+        editRemovals.clear();
+        activeBoardDrag = null;
+        clearBoardDragFeedback();
+        syncEditDraftControls();
+        if (render) renderAll();
+    }
+
     function toggleAssignmentRemoval(identity) {
         if (!identity || !editMode || boardView !== "project") return;
         const key = String(identity);
@@ -236,12 +256,15 @@
 
     function syncEditDraftControls(message = "", type = "") {
         const button = query("#workforceManagementApplyDraftsButton");
-        const changeCount = editDrafts.length + editOrders.size + editRemovals.size;
+        const changeCount = mainEditChangeCount();
         if (button) {
-            button.hidden = boardView !== "project" || changeCount === 0;
+            button.hidden = !editMode || boardView !== "project" || changeCount === 0;
             button.disabled = mutationBusy || changeCount === 0;
             button.textContent = changeCount ? `변경사항 저장 (${changeCount})` : "변경사항 저장";
         }
+        root?.querySelectorAll("[data-workforce-saved-refresh]").forEach((refreshButton) => {
+            refreshButton.disabled = mutationBusy;
+        });
         if (message) Common.ui.setInlineStatus(query("#workforceManagementBoardStatus"), message, type);
     }
 
@@ -263,6 +286,14 @@
         const order = editOrders.get(laneKey);
         if (!lane || !order) return;
         if (order.join("|") === naturalLaneIdentities(lane).join("|")) editOrders.delete(laneKey);
+    }
+
+    function isPendingOrderChange(lane, identity) {
+        if (!lane || !identity || String(identity).startsWith("draft:") || isPendingRemoval(identity)) return false;
+        const order = editOrders.get(lane.key);
+        if (!order) return false;
+        const natural = naturalLaneIdentities(lane);
+        return order.indexOf(identity) !== natural.indexOf(identity);
     }
 
     function stageLaneOrder(lane, identity, insertIndex) {
@@ -974,6 +1005,7 @@
         node.draggable = projectEditActive() && !isPendingRemoval(identity);
         node.classList.toggle("is-draft", isEditDraft(assignment));
         node.classList.toggle("is-pending-removal", isPendingRemoval(identity));
+        node.classList.toggle("is-pending-order", isPendingOrderChange(lane, identity));
     }
 
     function appendProjectDropCells(timeline, lane, rowSpan) {
@@ -1046,6 +1078,12 @@
                     element("small", "", `${assignmentStatusLabel(lane, assignment)} · ${fixed(pick(assignment, "totalMm", "TOTAL_MM"))} M/M`),
                     element("span", "workforce-management-assignment-settings", isEditDraft(assignment) ? "✎" : "⚙")
                 );
+                if (bar.classList.contains("is-pending-order")) {
+                    const orderChange = element("span", "workforce-management-assignment-order-change", "↕");
+                    orderChange.title = "순서 변경 · 저장 대기";
+                    orderChange.setAttribute("aria-hidden", "true");
+                    bar.appendChild(orderChange);
+                }
                 if (editMode) {
                     const pendingRemoval = isPendingRemoval(assignmentIdentity(lane, assignment));
                     const remove = element("span", "workforce-management-assignment-remove", "×");
@@ -1057,7 +1095,10 @@
                     remove.classList.toggle("is-undo", pendingRemoval);
                     bar.appendChild(remove);
                 }
-                bar.setAttribute("aria-label", `${employeeName(assignment)} ${lane.name} 투입 편집`);
+                bar.setAttribute(
+                    "aria-label",
+                    `${employeeName(assignment)} ${lane.name} 투입 편집${bar.classList.contains("is-pending-order") ? " · 순서 변경 저장 대기" : ""}`
+                );
                 timeline.appendChild(bar);
             });
             if (!laneAssignments.length) {
@@ -1202,7 +1243,7 @@
                 Common.api.request(`/planning/scenarios/references?planYear=${encodeURIComponent(year)}`, { signal: controller.signal, showLoading: false }),
                 Common.api.request(`/planning/scenarios?planYear=${encodeURIComponent(year)}`, { signal: controller.signal, showLoading: false })
             ]);
-            if (requestId !== requestSequence) return;
+            if (requestId !== requestSequence) return false;
             confirmedData = Common.data.get(confirmedPayload) || { projects: [], assignments: [], companies: [] };
             references = Common.data.get(referencePayload) || { workers: [], actualCapacity: [] };
             scenarios = Common.data.get(scenarioPayload)?.scenarios || [];
@@ -1213,7 +1254,7 @@
             scenario = null;
             if (targetScenarioId) {
                 const detailPayload = await Common.api.request(`/planning/scenarios/${encodeURIComponent(targetScenarioId)}`, { signal: controller.signal, showLoading: false });
-                if (requestId !== requestSequence) return;
+                if (requestId !== requestSequence) return false;
                 scenario = Common.data.get(detailPayload)?.scenario || null;
             }
             renderAll();
@@ -1226,6 +1267,7 @@
                 `${year}년과 수행기간이 겹치는 확정 ${confirmedLanes().length}개, 계획 ${planningLanes().length}개 프로젝트를 조회했습니다.`,
                 "success"
             );
+            return true;
         } catch (error) {
             if (error?.name !== "AbortError" && requestId === requestSequence) {
                 confirmedData = { projects: [], assignments: [], companies: [] };
@@ -1235,6 +1277,7 @@
                 renderAll();
                 Common.ui.setInlineStatus(query("#workforceManagementStatus"), error.message || "통합 대시보드를 불러오지 못했습니다.", "error");
             }
+            return false;
         } finally {
             if (requestId === requestSequence && query("#workforceManagementRefreshButton")) {
                 query("#workforceManagementRefreshButton").disabled = false;
@@ -2332,7 +2375,7 @@
     }
 
     function componentHtml(pageCode) {
-        return fetch(`./pages/${encodeURIComponent(pageCode)}.html`, {
+        return fetch(Common.asset.url(`./pages/${encodeURIComponent(pageCode)}.html`), {
             credentials: "same-origin",
             cache: "no-cache",
             signal: controller.signal
@@ -2346,7 +2389,7 @@
         if (window.Pages?.[pageCode]) return Promise.resolve({ module: window.Pages[pageCode], script: null });
         return new Promise((resolve, reject) => {
             const script = document.createElement("script");
-            script.src = `./js/${encodeURIComponent(pageCode)}.js`;
+            script.src = Common.asset.url(`./js/${encodeURIComponent(pageCode)}.js`);
             script.async = true;
             script.dataset.workforceEditorScript = pageCode;
             script.addEventListener("load", () => {
@@ -2520,8 +2563,18 @@
         renderLanes();
     }
 
-    function setEditMode(enabled) {
-        editMode = Boolean(enabled);
+    async function setEditMode(enabled) {
+        const nextEditMode = Boolean(enabled);
+        if (!nextEditMode && editMode && hasMainEditChanges()) {
+            const changeCount = Math.max(1, mainEditChangeCount());
+            const confirmed = await Common.ui.confirm(
+                `${changeCount}건의 저장하지 않은 변경사항이 있습니다. 변경사항을 취소하고 편집 모드를 종료하시겠습니까?`,
+                { title: "편집 종료 확인", confirmText: "저장하지 않고 종료", danger: true }
+            );
+            if (!confirmed) return false;
+            discardMainEditChanges({ render: false });
+        }
+        editMode = nextEditMode;
         const button = query("#workforceManagementEditModeButton");
         button.classList.toggle("is-active", editMode);
         button.setAttribute("aria-pressed", String(editMode));
@@ -2533,6 +2586,43 @@
         renderWorkers();
         renderProjectPalette();
         renderLanes();
+        syncEditDraftControls(
+            !editMode && !nextEditMode ? "편집 모드를 종료했습니다. 저장된 투입정보만 표시합니다." : "",
+            "success"
+        );
+        return true;
+    }
+
+    async function resetBoardToSavedState(triggerButton = null) {
+        if (mutationBusy) return;
+        const changeCount = mainEditChangeCount();
+        const hadUnsavedChanges = hasMainEditChanges();
+        if (hadUnsavedChanges) {
+            const confirmed = await Common.ui.confirm(
+                `${Math.max(1, changeCount)}건의 저장하지 않은 변경사항을 취소하고 저장된 상태로 다시 조회하시겠습니까?`,
+                { title: "변경사항 초기화", confirmText: "저장 상태로 다시 조회", danger: true }
+            );
+            if (!confirmed) return;
+        }
+        const refreshButtons = [...root.querySelectorAll("[data-workforce-saved-refresh]")];
+        refreshButtons.forEach((button) => { button.disabled = true; });
+        triggerButton?.classList.add("is-refreshing");
+        triggerButton?.setAttribute("aria-busy", "true");
+        Common.ui.setInlineStatus(query("#workforceManagementBoardStatus"), "저장된 최신 상태를 다시 조회하고 있습니다.");
+        try {
+            discardMainEditChanges({ render: false });
+            const loaded = await loadDashboard(scenario?.scenarioId || "");
+            if (!loaded) return;
+            const message = hadUnsavedChanges
+                ? "저장하지 않은 변경사항을 취소하고 저장된 상태로 다시 조회했습니다."
+                : "저장된 최신 상태로 다시 조회했습니다.";
+            syncEditDraftControls(message, "success");
+            Common.ui.toast(message, "success");
+        } finally {
+            triggerButton?.classList.remove("is-refreshing");
+            triggerButton?.removeAttribute("aria-busy");
+            refreshButtons.forEach((button) => { button.disabled = mutationBusy; });
+        }
     }
 
     function setBoardZoom(nextZoom) {
@@ -2754,7 +2844,11 @@
     function bindEvents() {
         query("#workforceManagementYear").addEventListener("change", () => loadDashboard(), { signal: controller.signal });
         query("#workforceManagementProject").addEventListener("change", renderAll, { signal: controller.signal });
-        query("#workforceManagementRefreshButton").addEventListener("click", () => loadDashboard(scenario?.scenarioId || ""), { signal: controller.signal });
+        root.querySelectorAll("[data-workforce-saved-refresh]").forEach((button) => {
+            button.addEventListener("click", () => {
+                resetBoardToSavedState(button).catch((error) => Common.ui.toast(error.message || "저장된 상태를 다시 조회하지 못했습니다.", "error"));
+            }, { signal: controller.signal });
+        });
         query("#workforceManagementSearch").addEventListener("input", () => {
             renderWorkers();
             renderLanes();
@@ -2769,7 +2863,9 @@
             projectSort = event.currentTarget.value === "customer" ? "customer" : "start";
             renderLanes();
         }, { signal: controller.signal });
-        query("#workforceManagementEditModeButton").addEventListener("click", () => setEditMode(!editMode), { signal: controller.signal });
+        query("#workforceManagementEditModeButton").addEventListener("click", () => {
+            setEditMode(!editMode).catch((error) => Common.ui.toast(error.message || "편집 모드를 변경하지 못했습니다.", "error"));
+        }, { signal: controller.signal });
         query("#workforceManagementApplyDraftsButton").addEventListener("click", () => {
             saveMainEditDrafts().catch((error) => Common.ui.toast(error.message || "변경사항을 저장하지 못했습니다.", "error"));
         }, { signal: controller.signal });
