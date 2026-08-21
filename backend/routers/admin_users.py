@@ -243,15 +243,14 @@ def _photo_max_bytes() -> int:
     return max(1024, min(configured_bytes, 10 * 1024 * 1024))
 
 
-def _validated_photo_type(content_type: str, file_data: bytes) -> str:
-    normalized = str(content_type or "").split(";", 1)[0].strip().lower()
-    signatures = _PHOTO_TYPES.get(normalized)
-    signature_matches = signatures and any(file_data.startswith(signature) for signature in signatures)
-    if normalized == "image/webp":
-        signature_matches = signature_matches and len(file_data) >= 12 and file_data[8:12] == b"WEBP"
-    if not signature_matches:
-        raise HTTPException(status_code=400, detail="Only valid JPEG, PNG, GIF, or WebP images are allowed.")
-    return normalized
+def _validated_photo_type(file_data: bytes) -> str:
+    for content_type, signatures in _PHOTO_TYPES.items():
+        if not any(file_data.startswith(signature) for signature in signatures):
+            continue
+        if content_type == "image/webp" and (len(file_data) < 12 or file_data[8:12] != b"WEBP"):
+            continue
+        return content_type
+    raise HTTPException(status_code=400, detail="Only valid JPEG, PNG, GIF, or WebP images are allowed.")
 
 
 def _safe_photo_name(value: str) -> str:
@@ -553,7 +552,7 @@ async def upload_user_photo(user_id: int, file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Profile photo is empty.")
         if len(file_data) > max_bytes:
             raise HTTPException(status_code=413, detail="Profile photo exceeds the server size limit.")
-        content_type = _validated_photo_type(file.content_type or "", file_data)
+        content_type = _validated_photo_type(file_data)
         file_name = _safe_photo_name(file.filename or "profile-image")
         return await run_in_threadpool(
             _store_user_photo,
