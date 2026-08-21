@@ -19,6 +19,7 @@ from backend.database import get_db_connection
 from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.passwords import hash_password, verify_password
+from backend.portal_access import portal_access_for_role
 
 
 logger = logging.getLogger(__name__)
@@ -400,4 +401,5 @@ def get_session(request: Request):
         "status": "success",
         "sessionTtlSeconds": get_session_ttl_seconds(),
         "user": user,
+        "portalAccess": portal_access_for_role(user.get("roleCode", "USER")),
     }

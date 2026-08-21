@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -8,9 +9,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from backend.auth_context import authenticate_request
+from backend.auth_context import authenticate_request, require_admin_role
 from backend.database import get_db_connection
 from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
@@ -58,6 +59,64 @@ def _file_payload(row) -> dict[str, Any]:
         "contentType": row[3] or "application/octet-stream",
         "fileSize": int(row[4] or 0),
         "sortOrder": int(row[5] or 0),
+    }
+
+
+def _load_notices(cursor, limit: int = 20) -> list[dict[str, Any]]:
+    cursor.execute(SqlLoader.get_sql("HOME_ACTIVE_NOTICES"), {"limit": limit})
+    notices = [_notice_payload(row) for row in cursor.fetchall()]
+    for notice in notices:
+        cursor.execute(
+            SqlLoader.get_sql("HOME_NOTICE_FILES"),
+            {"noticeId": notice["noticeId"]},
+        )
+        notice["attachments"] = [_file_payload(row) for row in cursor.fetchall()]
+    return notices
+
+
+def _decimal_number(value: Any) -> float | int:
+    number = float(value or 0)
+    return int(number) if number.is_integer() else number
+
+
+def _personal_assignment_payload(row) -> dict[str, Any]:
+    raw_allocations = _serialize(row[13])
+    allocation_data_quality_error = False
+    try:
+        source = json.loads(raw_allocations) if raw_allocations else []
+        if not isinstance(source, list):
+            raise ValueError("Monthly allocation JSON must be a list.")
+        monthly_allocations = []
+        for item in source:
+            month = str(item.get("month") or "") if isinstance(item, dict) else ""
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                raise ValueError("Monthly allocation contains an invalid month.")
+            monthly_allocations.append(
+                {"month": month, "mm": _decimal_number(item.get("mm"))}
+            )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        monthly_allocations = []
+        allocation_data_quality_error = True
+
+    return {
+        "assignmentId": int(row[0]),
+        "projectId": int(row[1]),
+        "projectName": row[2],
+        "customerName": row[3] or "",
+        "projectStatusCode": row[4] or "",
+        "projectStartDate": row[5],
+        "projectEndDate": row[6],
+        "assignmentStatusCode": row[7] or "CONFIRMED",
+        "assignmentStartDate": row[8],
+        "assignmentEndDate": row[9],
+        "allocationTypeCode": row[10] or "MONTHLY",
+        "defaultMm": _decimal_number(row[11]),
+        "totalMm": _decimal_number(row[12]),
+        "monthlyAllocations": monthly_allocations,
+        "allocationDataQualityError": allocation_data_quality_error,
+        "projectRoleName": row[14] or "",
+        "primaryDuty": row[15] or "",
+        "timelineStatusCode": row[16] or "COMPLETED",
     }
 
 
@@ -131,7 +190,7 @@ def _executive_scenario_payload(source: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
-@router.get("/dashboard")
+@router.get("/dashboard", dependencies=[Depends(require_admin_role)])
 def dashboard(
     request: Request,
     planYear: int | None = Query(default=None, ge=1900, le=2100),
@@ -145,14 +204,7 @@ def dashboard(
         cursor = conn.cursor()
         cursor.execute(SqlLoader.get_sql("HOME_DASHBOARD_COUNTS"))
         count_row = cursor.fetchone() or (0, 0, 0)
-        cursor.execute(SqlLoader.get_sql("HOME_ACTIVE_NOTICES"), {"limit": 20})
-        notices = [_notice_payload(row) for row in cursor.fetchall()]
-        for notice in notices:
-            cursor.execute(
-                SqlLoader.get_sql("HOME_NOTICE_FILES"),
-                {"noticeId": notice["noticeId"]},
-            )
-            notice["attachments"] = [_file_payload(row) for row in cursor.fetchall()]
+        notices = _load_notices(cursor)
 
         cursor.execute(
             SqlLoader.get_sql("HOME_EXECUTIVE_PROJECT_SUMMARY"),
@@ -226,6 +278,7 @@ def dashboard(
             "data": {
                 "appName": os.getenv("APP_NAME", "INIT Members"),
                 "user": user,
+                "dashboardType": "executive",
                 "planYear": plan_year,
                 "generatedAt": datetime.now().isoformat(),
                 "noticeCount": int(count_row[2] or 0),
@@ -254,6 +307,87 @@ def dashboard(
             default_detail="경영 현황을 불러오지 못했습니다.",
             schema_detail="시스템 DB 기본 스키마가 설치되지 않았습니다. INIT_SYSTEM_DDL.sql을 확인해 주세요.",
             unavailable_detail="시스템 DB에 연결하지 못했습니다. DB 접속 상태와 연결 풀을 확인해 주세요.",
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/my-dashboard")
+def my_dashboard(request: Request):
+    user = authenticate_request(request)
+    user_id = int(user["userId"])
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            SqlLoader.get_sql("HOME_PERSONAL_ASSIGNMENTS"),
+            {"userId": user_id, "limit": 100},
+        )
+        assignments = [_personal_assignment_payload(row) for row in cursor.fetchall()]
+        notices = _load_notices(cursor)
+
+        current_month = datetime.now().strftime("%Y-%m")
+        current_year = current_month[:4]
+        monthly_mm = {
+            f"{current_year}-{month:02d}": 0.0
+            for month in range(1, 13)
+        }
+        for assignment in assignments:
+            for allocation in assignment["monthlyAllocations"]:
+                month = allocation["month"]
+                if month in monthly_mm:
+                    monthly_mm[month] += float(allocation["mm"] or 0)
+
+        active_project_ids = {
+            assignment["projectId"]
+            for assignment in assignments
+            if assignment["timelineStatusCode"] == "ACTIVE"
+        }
+        upcoming_project_ids = {
+            assignment["projectId"]
+            for assignment in assignments
+            if assignment["timelineStatusCode"] == "UPCOMING"
+        }
+        all_project_ids = {assignment["projectId"] for assignment in assignments}
+        return {
+            "status": "success",
+            "data": {
+                "appName": os.getenv("APP_NAME", "INIT Members"),
+                "user": user,
+                "dashboardType": "personal",
+                "generatedAt": datetime.now().isoformat(),
+                "currentMonth": current_month,
+                "summary": {
+                    "activeProjectCount": len(active_project_ids),
+                    "upcomingProjectCount": len(upcoming_project_ids),
+                    "totalProjectCount": len(all_project_ids),
+                    "currentMonthMm": _decimal_number(monthly_mm[current_month]),
+                },
+                "monthlyAllocations": [
+                    {"month": month, "mm": _decimal_number(mm)}
+                    for month, mm in monthly_mm.items()
+                ],
+                "assignments": assignments,
+                "notices": notices,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Personal dashboard query failed. user_id=%s", user_id)
+        raise_database_http_error(
+            exc,
+            default_detail="개인 투입 프로젝트 현황을 불러오지 못했습니다.",
+            schema_detail=(
+                "프로젝트 투입 스키마가 설치되지 않았습니다. "
+                "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
+            ),
+            unavailable_detail="시스템 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
         )
     finally:
         if cursor:

@@ -14,8 +14,13 @@
 
     const pageMap = new Map();
     const loadedScripts = new Map();
-    const registeredHtmlPages = new Set(window.PAGE_FILE_CONFIG?.htmlPages || []);
-    const registeredScriptPages = new Set(window.PAGE_FILE_CONFIG?.scriptPages || []);
+    const registeredHtmlPages = new Set();
+    const registeredScriptPages = new Set();
+    const bootstrapNavigation = Array.isArray(window.MENU_CONFIG) ? window.MENU_CONFIG : [];
+    const bootstrapPageFiles = {
+        htmlPages: [...(window.PAGE_FILE_CONFIG?.htmlPages || [])],
+        scriptPages: [...(window.PAGE_FILE_CONFIG?.scriptPages || [])]
+    };
     const DEFAULT_PAGE_CODE = "home";
     const PAGE_ALIASES = {
         "project-assignments": { pageCode: "workforce-management", context: { initialMode: "confirmed" } },
@@ -32,8 +37,38 @@
         });
     }
 
-    collectPages(window.MENU_CONFIG || []);
-    pageMap.set("login", { type: "page", page: "login", label: "로그인", title: "로그인", public: true });
+    function installPortalAccess(navigation, pageFiles) {
+        const safeNavigation = Array.isArray(navigation) ? navigation : [];
+        const htmlPages = Array.isArray(pageFiles?.htmlPages) ? pageFiles.htmlPages : [];
+        const scriptPages = Array.isArray(pageFiles?.scriptPages) ? pageFiles.scriptPages : [];
+
+        window.MENU_CONFIG = safeNavigation;
+        window.PAGE_FILE_CONFIG = { htmlPages: [...htmlPages], scriptPages: [...scriptPages] };
+        pageMap.clear();
+        collectPages(safeNavigation);
+        pageMap.set("login", { type: "page", page: "login", label: "로그인", title: "로그인", public: true });
+        registeredHtmlPages.clear();
+        registeredScriptPages.clear();
+        htmlPages.forEach((pageCode) => registeredHtmlPages.add(String(pageCode)));
+        scriptPages.forEach((pageCode) => registeredScriptPages.add(String(pageCode)));
+        registeredHtmlPages.add("login");
+        registeredScriptPages.add("login");
+    }
+
+    function resetPortalAccess() {
+        installPortalAccess(bootstrapNavigation, bootstrapPageFiles);
+    }
+
+    function applyPortalAccess(payload) {
+        const data = Common.data.get(payload) || {};
+        const access = data.portalAccess || payload?.portalAccess;
+        if (!access || !Array.isArray(access.navigation) || !access.pageFiles) {
+            throw new Error("서버에서 화면 접근 권한을 확인하지 못했습니다.");
+        }
+        installPortalAccess(access.navigation, access.pageFiles);
+    }
+
+    resetPortalAccess();
 
     const visitedPages = new Set();
 
@@ -732,12 +767,16 @@
                 method: "GET",
                 showLoading: options.showLoading === true
             });
-            state.user = Common.data.normalizeUser(payload);
+            const sessionUser = Common.data.normalizeUser(payload);
+            if (!sessionUser) throw new Error("로그인 사용자 정보를 확인하지 못했습니다.");
+            applyPortalAccess(payload);
+            state.user = sessionUser;
         } catch (error) {
             if (!(error instanceof Common.ApiError) || error.status !== 401) {
                 if (!options.silent) Common.ui.toast(error.message || "세션을 확인하지 못했습니다.", "error");
             }
             state.user = null;
+            resetPortalAccess();
         } finally {
             state.sessionChecked = true;
             renderNavigation();
@@ -760,6 +799,7 @@
         }
 
         state.user = null;
+        resetPortalAccess();
         renderNavigation();
         await PageManager.clear({ reason: "logout" });
         await PageManager.load("login", { replaceHash: true });
@@ -818,6 +858,7 @@
         state.handlingUnauthorized = true;
         try {
             state.user = null;
+            resetPortalAccess();
             renderNavigation();
             Common.ui.toast("로그인 세션이 만료되었습니다. 다시 로그인해 주세요.", "warning");
             await PageManager.clear({ reason: "session expired" });

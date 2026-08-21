@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +21,7 @@ from backend.auth_context import (
     refresh_session_cookie,
 )
 from backend.database import close_db_pool, initialize_db_pool
+from backend.portal_access import ADMIN_PAGE_CODES
 from backend.rate_limit import check_auth_rate_limit
 from backend.routers import (
     account,
@@ -40,6 +42,8 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 PORTAL_SITE_FILE = FRONTEND_DIR / "index.html"
+PORTAL_ADMIN_HOME_FILE = FRONTEND_DIR / "pages" / "home.html"
+PORTAL_USER_HOME_FILE = FRONTEND_DIR / "pages" / "home-user.html"
 
 
 @asynccontextmanager
@@ -173,6 +177,29 @@ SENSITIVE_DIRECT_PATH_PREFIXES = (
     "/Wallet",
 )
 
+ADMIN_API_PATH_PREFIXES = (
+    "/api/admin",
+    "/api/planning",
+    "/api/project-assignments",
+    "/api/home/dashboard",
+)
+
+ADMIN_PAGE_ASSET_PATHS = frozenset(
+    [f"/pages/{page_code}.html" for page_code in ADMIN_PAGE_CODES]
+    + [f"/js/{page_code}.js" for page_code in ADMIN_PAGE_CODES]
+)
+
+INTERNAL_PAGE_TEMPLATE_PATHS = frozenset({"/pages/home-user.html"})
+
+
+def _matches_path_prefix(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
+def _normalized_direct_path(path: str) -> str:
+    slash_path = f"/{str(path or '').replace(chr(92), '/').lstrip('/')}"
+    return f"/{posixpath.normpath(slash_path).lstrip('/')}".lower()
+
 
 def _has_allowed_request_source(request) -> bool:
     request_origin = _normalized_origin(str(request.base_url), allow_path=True)
@@ -197,7 +224,10 @@ def _has_allowed_request_source(request) -> bool:
 @app.middleware("http")
 async def enforce_api_authentication(request, call_next):
     path = request.url.path
+    normalized_direct_path = _normalized_direct_path(path)
     if path.startswith(SENSITIVE_DIRECT_PATH_PREFIXES):
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    if normalized_direct_path in INTERNAL_PAGE_TEMPLATE_PATHS:
         return JSONResponse(status_code=404, content={"detail": "Not found"})
 
     method = request.method.upper()
@@ -223,13 +253,19 @@ async def enforce_api_authentication(request, call_next):
             )
 
     session_authenticated = False
-    if (
+    protected_admin_asset = normalized_direct_path in ADMIN_PAGE_ASSET_PATHS
+    protected_api = (
         path.startswith("/api/")
         and (method, path) not in PUBLIC_API_ROUTES
         and method != "OPTIONS"
-    ):
+    )
+    if protected_api or protected_admin_asset:
         try:
-            session_user = await run_in_threadpool(authenticate_request, request)
+            session_user = await run_in_threadpool(
+                authenticate_request,
+                request,
+                touch=protected_api,
+            )
             session_authenticated = True
             if (
                 str(session_user.get("passwordChangeYn") or "N").strip().upper() != "Y"
@@ -238,6 +274,22 @@ async def enforce_api_authentication(request, call_next):
                 response = JSONResponse(
                     status_code=403,
                     content={"detail": "초기 비밀번호를 먼저 변경해 주세요."},
+                )
+                refresh_session_cookie(request, response)
+                response.headers["X-INIT-Session-TTL-Seconds"] = str(
+                    get_session_ttl_seconds()
+                )
+                return response
+            if (
+                protected_admin_asset
+                or any(
+                    _matches_path_prefix(path, prefix)
+                    for prefix in ADMIN_API_PATH_PREFIXES
+                )
+            ) and str(session_user.get("roleCode") or "USER").strip().upper() != "ADMIN":
+                response = JSONResponse(
+                    status_code=403,
+                    content={"detail": "관리자 권한이 필요합니다."},
                 )
                 refresh_session_cookie(request, response)
                 response.headers["X-INIT-Session-TTL-Seconds"] = str(
@@ -339,6 +391,14 @@ def authenticated_portal():
 @app.get("/index.html", include_in_schema=False)
 def redirect_to_authenticated_portal():
     return RedirectResponse(url="/app", status_code=308)
+
+
+@app.get("/pages/home.html", include_in_schema=False)
+def role_specific_home(request: Request):
+    user = authenticate_request(request)
+    role_code = str(user.get("roleCode") or "USER").strip().upper()
+    home_file = PORTAL_ADMIN_HOME_FILE if role_code == "ADMIN" else PORTAL_USER_HOME_FILE
+    return FileResponse(home_file)
 
 
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

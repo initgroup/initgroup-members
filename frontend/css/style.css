@@ -39,6 +39,281 @@
     text-size-adjust: 100%;
 }
 
+/* Personal project dashboard */
+.personal-home {
+    display: grid;
+    gap: 20px;
+}
+
+.personal-home-header {
+    align-items: flex-end;
+}
+
+.personal-home-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.personal-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.personal-kpi-card {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    min-height: 132px;
+    padding: 20px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 22px rgb(15 23 42 / 0.05);
+}
+
+.personal-kpi-card::before {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: #10b981;
+    content: "";
+}
+
+.personal-kpi-card.is-upcoming::before {
+    background: #6366f1;
+}
+
+.personal-kpi-card.is-mm::before {
+    background: #0ea5e9;
+}
+
+.personal-kpi-card.is-total::before {
+    background: #f59e0b;
+}
+
+.personal-kpi-card > span {
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.personal-kpi-card > strong {
+    align-self: center;
+    color: #0f2942;
+    font-size: clamp(1.55rem, 2vw, 2.25rem);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+}
+
+.personal-kpi-card > strong em {
+    color: #64748b;
+    font-size: 0.75rem;
+    font-style: normal;
+    letter-spacing: 0;
+}
+
+.personal-kpi-card > small {
+    align-self: end;
+    color: #64748b;
+    font-size: 0.7rem;
+}
+
+.personal-dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.8fr) minmax(520px, 1.2fr);
+    gap: 16px;
+}
+
+.personal-panel-header {
+    align-items: flex-start;
+}
+
+.personal-chart-legend {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.68rem;
+    font-weight: 900;
+}
+
+.personal-monthly-chart {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(32px, 1fr));
+    align-items: stretch;
+    gap: 6px;
+    min-height: 260px;
+    padding-top: 12px;
+}
+
+.personal-month-column {
+    display: grid;
+    grid-template-rows: minmax(200px, 1fr) auto;
+    gap: 8px;
+    min-width: 0;
+    color: #64748b;
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.personal-month-bar-track {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    min-height: 200px;
+    padding-top: 8px;
+    border-bottom: 1px solid #dbe4ee;
+    background-image: linear-gradient(to bottom, #edf2f7 1px, transparent 1px);
+    background-size: 100% 25%;
+}
+
+.personal-month-bar {
+    display: block;
+    width: min(24px, 65%);
+    height: var(--personal-mm-height);
+    min-height: 0;
+    border-radius: 5px 5px 1px 1px;
+    background: linear-gradient(180deg, #38bdf8, #0284c7);
+}
+
+.personal-month-bar.is-overallocated {
+    background: linear-gradient(180deg, #fb7185, #e11d48);
+}
+
+.personal-assignment-list {
+    display: grid;
+    gap: 9px;
+    max-height: 390px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.personal-assignment-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 14px;
+    padding: 13px 14px;
+    border: 1px solid #e1e8f0;
+    border-radius: 12px;
+    background: #fbfdff;
+}
+
+.personal-assignment-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+}
+
+.personal-assignment-heading strong {
+    overflow: hidden;
+    color: #15324c;
+    font-size: 0.82rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.personal-assignment-status {
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #15803d;
+    font-size: 0.62rem;
+    font-weight: 900;
+}
+
+.personal-assignment-status.is-upcoming {
+    background: #e0e7ff;
+    color: #4338ca;
+}
+
+.personal-assignment-status.is-completed {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.personal-assignment-mm {
+    color: #0369a1;
+    font-size: 0.76rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.personal-assignment-meta,
+.personal-assignment-duty {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.7rem;
+}
+
+.personal-assignment-duty {
+    grid-column: 1 / -1;
+    color: #475569;
+}
+
+.personal-assignment-warning {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #b45309;
+    font-size: 0.68rem;
+}
+
+.personal-assignment-list > .dashboard-empty-state {
+    min-height: 240px;
+}
+
+.personal-notice-panel {
+    margin-top: 0;
+}
+
+@media (max-width: 1280px) {
+    .personal-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 760px) {
+    .personal-home-header,
+    .personal-home-actions {
+        align-items: stretch;
+    }
+
+    .personal-home-actions {
+        justify-content: flex-start;
+    }
+
+    .personal-kpi-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .personal-monthly-chart {
+        grid-template-columns: repeat(12, minmax(46px, 1fr));
+        overflow-x: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .personal-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .personal-assignment-card {
+        grid-template-columns: 1fr;
+    }
+
+    .personal-assignment-mm,
+    .personal-assignment-duty,
+    .personal-assignment-warning {
+        grid-column: 1;
+    }
+}
+
 /* Executive business dashboard */
 .executive-home {
     display: grid;
