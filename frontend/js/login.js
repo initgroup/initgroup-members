@@ -113,7 +113,7 @@
             }
 
             Common.ui.toast(`${user.userName || user.loginId}님, 반갑습니다.`, "success");
-            await App.navigate("home", { replaceHash: true });
+            await App.navigateDefault({ replaceHash: true });
         } catch (error) {
             if (error?.name === "AbortError") return;
             Common.ui.setInlineStatus(status, error.message || "로그인하지 못했습니다.", "error");
@@ -156,7 +156,7 @@
             query("#requiredPasswordChangeForm")?.reset();
             query("#requiredPasswordChangeDialog")?.close();
             Common.ui.toast("비밀번호를 변경했습니다.", "success");
-            await App.navigate("home", { replaceHash: true });
+            await App.navigateDefault({ replaceHash: true });
         } catch (error) {
             if (error?.name !== "AbortError") {
                 Common.ui.setInlineStatus(status, error.message || "비밀번호를 변경하지 못했습니다.", "error");

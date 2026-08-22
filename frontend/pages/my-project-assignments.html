@@ -1,0 +1,99 @@
+<section class="page personal-home" id="page-my-project-assignments" aria-labelledby="myProjectAssignmentsTitle">
+    <header class="page-header personal-home-header">
+        <div>
+            <p class="page-kicker">MY PROJECT WORKSPACE</p>
+            <h2 id="myProjectAssignmentsTitle" data-page-focus>개인별 프로젝트 투입현황</h2>
+            <p id="myProjectAssignmentsGreeting">현재 투입 중인 프로젝트와 예정 일정을 확인하세요.</p>
+        </div>
+        <div class="personal-home-actions">
+            <button id="myProjectAssignmentsRefreshButton" class="button button-secondary" type="button">새로고침</button>
+            <span id="myProjectAssignmentsUpdatedAt" class="home-updated-at">업데이트 대기</span>
+        </div>
+    </header>
+
+    <p id="myProjectAssignmentsStatus" class="inline-status home-dashboard-status" aria-live="polite"></p>
+
+    <section class="personal-kpi-grid" aria-label="개인 프로젝트 핵심 지표">
+        <article class="personal-kpi-card is-active">
+            <span>현재 투입 프로젝트</span>
+            <strong id="myProjectAssignmentsActiveCount">0</strong>
+            <small>오늘 기준 진행 중</small>
+        </article>
+        <article class="personal-kpi-card is-upcoming">
+            <span>예정 프로젝트</span>
+            <strong id="myProjectAssignmentsUpcomingCount">0</strong>
+            <small>투입 시작 전 일정</small>
+        </article>
+        <article class="personal-kpi-card is-mm">
+            <span>이번 달 투입</span>
+            <strong><span id="myProjectAssignmentsCurrentMm">0</span><em> M/M</em></strong>
+            <small id="myProjectAssignmentsCurrentMonth">이번 달 배분 합계</small>
+        </article>
+        <article class="personal-kpi-card is-total">
+            <span>전체 참여 프로젝트</span>
+            <strong id="myProjectAssignmentsTotalCount">0</strong>
+            <small>등록된 개인 투입 이력</small>
+        </article>
+    </section>
+
+    <section class="personal-dashboard-grid">
+        <article class="panel personal-monthly-panel" aria-labelledby="myProjectAssignmentsMonthlyTitle">
+            <div class="panel-header personal-panel-header">
+                <div>
+                    <p class="panel-kicker">MONTHLY ALLOCATION</p>
+                    <h3 id="myProjectAssignmentsMonthlyTitle">월별 나의 투입 M/M</h3>
+                    <p>현재 연도에 등록된 프로젝트별 월 배분을 합산합니다.</p>
+                </div>
+                <span class="personal-chart-legend">M/M</span>
+            </div>
+            <div id="myProjectAssignmentsMonthlyChart" class="personal-monthly-chart" aria-live="polite"></div>
+        </article>
+
+        <article class="panel personal-assignment-panel" aria-labelledby="myProjectAssignmentsListTitle">
+            <div class="panel-header personal-panel-header">
+                <div>
+                    <p class="panel-kicker">MY ASSIGNMENTS</p>
+                    <h3 id="myProjectAssignmentsListTitle">나의 투입 프로젝트</h3>
+                    <p>현재, 예정, 완료 순으로 본인의 투입 일정만 표시합니다.</p>
+                </div>
+                <span id="myProjectAssignmentsListCount" class="dashboard-section-count">0건</span>
+            </div>
+            <div id="myProjectAssignmentsList" class="personal-assignment-list"></div>
+        </article>
+    </section>
+
+    <dialog id="myProjectAssignmentsDetailDialog" class="dialog personal-project-detail-dialog"
+            aria-labelledby="myProjectAssignmentsDetailTitle">
+        <header class="dialog-header" data-my-project-detail-drag-handle>
+            <div>
+                <p class="page-kicker">PROJECT DETAIL</p>
+                <h3 id="myProjectAssignmentsDetailTitle">프로젝트 상세정보</h3>
+                <p id="myProjectAssignmentsDetailSubtitle">프로젝트 기본 정보와 투입인력을 확인하세요.</p>
+            </div>
+            <button class="dialog-close" type="button" data-my-project-detail-close aria-label="프로젝트 상세정보 닫기">×</button>
+        </header>
+        <div class="dialog-body personal-project-detail-body">
+            <p id="myProjectAssignmentsDetailStatus" class="inline-status" aria-live="polite"></p>
+            <section aria-labelledby="myProjectAssignmentsBasicTitle">
+                <div class="personal-project-detail-section-heading">
+                    <h4 id="myProjectAssignmentsBasicTitle">프로젝트 기본 정보</h4>
+                    <span id="myProjectAssignmentsDetailProjectStatus" class="personal-project-detail-status"></span>
+                </div>
+                <dl id="myProjectAssignmentsDetailFields" class="personal-project-detail-fields"></dl>
+                <div id="myProjectAssignmentsDetailDescription" class="personal-project-detail-description" hidden></div>
+            </section>
+            <section aria-labelledby="myProjectAssignmentsWorkforceTitle">
+                <div class="personal-project-detail-section-heading">
+                    <h4 id="myProjectAssignmentsWorkforceTitle">투입인력</h4>
+                    <span id="myProjectAssignmentsWorkforceCount" class="dashboard-section-count">0명</span>
+                </div>
+                <div id="myProjectAssignmentsWorkforceList" class="personal-project-workforce-list"></div>
+            </section>
+        </div>
+        <footer class="dialog-footer">
+            <small class="personal-project-detail-move-guide">상단 영역을 드래그하면 팝업을 이동할 수 있습니다.</small>
+            <span class="dialog-footer-spacer"></span>
+            <button class="button button-secondary" type="button" data-my-project-detail-close>닫기</button>
+        </footer>
+    </dialog>
+</section>

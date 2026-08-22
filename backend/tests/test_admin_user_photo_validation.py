@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from io import BytesIO
 
 from fastapi import HTTPException
+from PIL import Image
 
 from backend.routers import admin_users
 
@@ -32,6 +34,44 @@ class AdminUserPhotoValidationTests(unittest.TestCase):
                     admin_users._validated_photo_type(file_data)
 
                 self.assertEqual(400, context.exception.status_code)
+
+    def test_photo_thumbnail_is_small_fixed_size_jpeg(self):
+        source = BytesIO()
+        Image.new("RGB", (1200, 800), "#234f72").save(
+            source,
+            format="PNG",
+        )
+
+        thumbnail = admin_users._build_photo_thumbnail(source.getvalue())
+
+        self.assertLess(len(thumbnail), len(source.getvalue()))
+        with Image.open(BytesIO(thumbnail)) as image:
+            self.assertEqual("JPEG", image.format)
+            self.assertEqual((160, 160), image.size)
+
+    def test_uploaded_photo_is_resized_and_stored_as_jpeg(self):
+        source = BytesIO()
+        Image.new("RGBA", (2400, 1600), (35, 79, 114, 180)).save(
+            source,
+            format="PNG",
+        )
+
+        normalized, content_type = admin_users._normalized_profile_photo(
+            source.getvalue()
+        )
+
+        self.assertEqual("image/jpeg", content_type)
+        self.assertLess(len(normalized), len(source.getvalue()))
+        with Image.open(BytesIO(normalized)) as image:
+            self.assertEqual("JPEG", image.format)
+            self.assertLessEqual(image.width, 1200)
+            self.assertLessEqual(image.height, 1200)
+
+    def test_normalized_photo_name_uses_jpeg_extension(self):
+        self.assertEqual(
+            "employee.profile.jpg",
+            admin_users._normalized_photo_name("employee.profile.png"),
+        )
 
 
 if __name__ == "__main__":

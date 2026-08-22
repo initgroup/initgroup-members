@@ -5,16 +5,24 @@ import os
 import re
 import secrets
 import string
+from collections import OrderedDict
 from datetime import date, datetime
+from io import BytesIO
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import oracledb
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
+from PIL import Image, ImageOps
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from backend.auth_context import get_request_user_id, require_admin_role
+from backend.auth_context import (
+    get_request_user_id,
+    invalidate_user_session_cache,
+    require_admin_role,
+)
 from backend.database import get_db_connection
 from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
@@ -38,6 +46,12 @@ _PHOTO_TYPES = {
     "image/gif": (b"GIF87a", b"GIF89a"),
     "image/webp": (b"RIFF",),
 }
+_PHOTO_THUMBNAIL_SIZE = (160, 160)
+_PHOTO_STORAGE_MAX_SIZE = (1200, 1200)
+_PHOTO_THUMBNAIL_CACHE_MAX_SIZE = 512
+_photo_thumbnail_cache_lock = Lock()
+_photo_thumbnail_cache: OrderedDict[tuple[int, str], bytes] = OrderedDict()
+Image.MAX_IMAGE_PIXELS = 40_000_000
 _ADMIN_USER_PROFILE_BINDS = {
     "employeeNo", "genderCode", "birthDate", "birthCalendarCode", "hireDate",
     "retirementDate", "employmentStatusCode", "employmentTypeCode", "departmentName", "departmentCode",
@@ -259,6 +273,88 @@ def _safe_photo_name(value: str) -> str:
     return file_name[:500] or "profile-image"
 
 
+def _normalized_photo_name(value: str) -> str:
+    safe_name = _safe_photo_name(value)
+    stem = Path(safe_name).stem.strip()[:495] or "profile-image"
+    return f"{stem}.jpg"
+
+
+def _normalized_profile_photo(file_data: bytes) -> tuple[bytes, str]:
+    try:
+        with Image.open(BytesIO(file_data)) as source:
+            source.seek(0)
+            normalized = ImageOps.exif_transpose(source)
+            normalized.thumbnail(
+                _PHOTO_STORAGE_MAX_SIZE,
+                Image.Resampling.LANCZOS,
+            )
+            rgba = normalized.convert("RGBA")
+            background = Image.new("RGB", rgba.size, "white")
+            background.paste(rgba, mask=rgba.getchannel("A"))
+            output = BytesIO()
+            background.save(
+                output,
+                format="JPEG",
+                quality=85,
+                optimize=True,
+                progressive=True,
+            )
+            return output.getvalue(), "image/jpeg"
+    except (Image.DecompressionBombError, OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile photo data is damaged or too large to process.",
+        ) from exc
+
+
+def _photo_version(value: Any) -> str:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value or "")
+
+
+def _invalidate_photo_thumbnail(user_id: int) -> None:
+    with _photo_thumbnail_cache_lock:
+        stale_keys = [
+            key for key in _photo_thumbnail_cache
+            if key[0] == int(user_id)
+        ]
+        for key in stale_keys:
+            _photo_thumbnail_cache.pop(key, None)
+
+
+def _build_photo_thumbnail(file_data: bytes) -> bytes:
+    with Image.open(BytesIO(file_data)) as source:
+        source.seek(0)
+        normalized = ImageOps.exif_transpose(source)
+        fitted = ImageOps.fit(
+            normalized.convert("RGBA"),
+            _PHOTO_THUMBNAIL_SIZE,
+            method=Image.Resampling.LANCZOS,
+        )
+        background = Image.new("RGB", _PHOTO_THUMBNAIL_SIZE, "white")
+        background.paste(fitted, mask=fitted.getchannel("A"))
+        output = BytesIO()
+        background.save(output, format="JPEG", quality=78, optimize=True)
+        return output.getvalue()
+
+
+def _photo_thumbnail(user_id: int, version: str, file_data: bytes) -> bytes:
+    cache_key = (int(user_id), version)
+    with _photo_thumbnail_cache_lock:
+        cached = _photo_thumbnail_cache.get(cache_key)
+        if cached is not None:
+            _photo_thumbnail_cache.move_to_end(cache_key)
+            return cached
+    thumbnail = _build_photo_thumbnail(file_data)
+    with _photo_thumbnail_cache_lock:
+        _photo_thumbnail_cache[cache_key] = thumbnail
+        _photo_thumbnail_cache.move_to_end(cache_key)
+        while len(_photo_thumbnail_cache) > _PHOTO_THUMBNAIL_CACHE_MAX_SIZE:
+            _photo_thumbnail_cache.popitem(last=False)
+    return thumbnail
+
+
 @router.post("")
 def create_user(payload: UserCreateRequest):
     login_id, user_name, email, role_code, use_yn = _validated_user_values(
@@ -465,6 +561,7 @@ def update_user(user_id: int, payload: UserUpdateRequest, request: Request):
                 {"userId": user_id},
             )
         conn.commit()
+        invalidate_user_session_cache(user_id)
         return {
             "status": "success",
             "data": {
@@ -518,6 +615,7 @@ def _store_user_photo(
         if cursor.rowcount <= 0:
             raise HTTPException(status_code=404, detail="User was not found.")
         conn.commit()
+        _invalidate_photo_thumbnail(user_id)
         return {
             "status": "success",
             "data": {
@@ -552,8 +650,9 @@ async def upload_user_photo(user_id: int, file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Profile photo is empty.")
         if len(file_data) > max_bytes:
             raise HTTPException(status_code=413, detail="Profile photo exceeds the server size limit.")
-        content_type = _validated_photo_type(file_data)
-        file_name = _safe_photo_name(file.filename or "profile-image")
+        _validated_photo_type(file_data)
+        file_data, content_type = _normalized_profile_photo(file_data)
+        file_name = _normalized_photo_name(file.filename or "profile-image")
         return await run_in_threadpool(
             _store_user_photo,
             user_id,
@@ -566,7 +665,11 @@ async def upload_user_photo(user_id: int, file: UploadFile = File(...)):
 
 
 @router.get("/{user_id}/photo")
-def get_user_photo(user_id: int):
+def get_user_photo(
+    user_id: int,
+    thumbnail: bool = Query(default=False),
+    v: str = Query(default="", max_length=100),
+):
     conn = None
     cursor = None
     try:
@@ -579,11 +682,30 @@ def get_user_photo(user_id: int):
         file_data = _serialize(row[1]) or b""
         if isinstance(file_data, str):
             file_data = file_data.encode("utf-8")
+        media_type = row[0] or "application/octet-stream"
+        if thumbnail:
+            try:
+                file_data = _photo_thumbnail(
+                    user_id,
+                    _photo_version(row[2]),
+                    file_data,
+                )
+                media_type = "image/jpeg"
+            except Exception:
+                logger.warning(
+                    "Profile photo thumbnail generation failed. user_id=%s",
+                    user_id,
+                    exc_info=True,
+                )
         return Response(
             content=file_data,
-            media_type=row[0] or "application/octet-stream",
+            media_type=media_type,
             headers={
-                "Cache-Control": "private, no-store",
+                "Cache-Control": (
+                    "private, max-age=31536000, immutable"
+                    if v
+                    else "private, no-cache"
+                ),
                 "X-Content-Type-Options": "nosniff",
                 "Content-Security-Policy": "default-src 'none'; sandbox",
             },
@@ -606,6 +728,7 @@ def delete_user_photo(user_id: int):
         if cursor.rowcount <= 0:
             raise HTTPException(status_code=404, detail="Profile photo was not found.")
         conn.commit()
+        _invalidate_photo_thumbnail(user_id)
         return {"status": "success", "data": {"userId": user_id}}
     except HTTPException:
         if conn:
@@ -660,6 +783,7 @@ def delete_user(user_id: int, request: Request):
         if cursor.rowcount <= 0:
             raise HTTPException(status_code=404, detail="User was not found.")
         conn.commit()
+        invalidate_user_session_cache(user_id)
         return {
             "status": "success",
             "message": "User deleted.",
@@ -713,6 +837,7 @@ def reset_password(user_id: int):
             {"userId": user_id},
         )
         conn.commit()
+        invalidate_user_session_cache(user_id)
         return {
             "status": "success",
             "message": "Temporary password created.",

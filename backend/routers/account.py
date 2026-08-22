@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.auth_context import (
     get_current_session_token_hash,
     get_request_user_id,
+    invalidate_user_session_cache,
 )
 from backend.database import get_db_connection
 from backend.database_errors import raise_database_http_error
@@ -112,6 +113,7 @@ def update_profile(payload: ProfileUpdateRequest, request: Request):
             raise HTTPException(status_code=404, detail="사용 중인 로그인 계정을 찾을 수 없습니다.")
         user = _user_payload(_load_user(cursor, user_id))
         conn.commit()
+        invalidate_user_session_cache(user_id)
         return {"status": "success", "data": user}
     except HTTPException:
         if conn:
@@ -165,6 +167,7 @@ def update_password(payload: PasswordUpdateRequest, request: Request):
             },
         )
         conn.commit()
+        invalidate_user_session_cache(user_id)
         return {"status": "success", "message": "비밀번호를 변경했습니다."}
     except HTTPException:
         if conn:

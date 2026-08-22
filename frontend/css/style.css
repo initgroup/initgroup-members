@@ -264,6 +264,237 @@
     font-size: 0.68rem;
 }
 
+.personal-assignment-detail-button {
+    grid-column: 2;
+    justify-self: end;
+    min-height: 30px;
+    padding: 5px 12px;
+    font-size: 0.7rem;
+}
+
+.dialog.personal-project-detail-dialog {
+    width: min(900px, calc(100vw - 28px));
+    max-height: calc(100vh - 28px);
+    padding: 0;
+    overflow: hidden;
+    transform: translate(var(--personal-project-detail-x, 0px), var(--personal-project-detail-y, 0px));
+}
+
+.personal-project-detail-dialog .dialog-header {
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+}
+
+.personal-project-detail-dialog .dialog-header.is-dragging {
+    cursor: grabbing;
+}
+
+.personal-project-detail-dialog .dialog-header p:last-child {
+    margin: 4px 0 0;
+    color: var(--color-muted);
+    font-size: 0.72rem;
+}
+
+.personal-project-detail-dialog .personal-project-detail-body {
+    display: grid;
+    max-height: calc(100vh - 190px);
+    padding: 18px;
+    overflow: auto;
+    gap: 22px;
+}
+
+.personal-project-detail-body > .inline-status:empty {
+    display: none;
+}
+
+.personal-project-detail-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.personal-project-detail-section-heading h4 {
+    margin: 0;
+    color: #15324c;
+    font-size: 0.9rem;
+}
+
+.personal-project-detail-status {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.68rem;
+    font-weight: 900;
+}
+
+.personal-project-detail-status:empty {
+    display: none;
+}
+
+.personal-project-detail-fields {
+    display: grid;
+    margin: 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 9px;
+}
+
+.personal-project-detail-fields > div {
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    background: #f8fafc;
+}
+
+.personal-project-detail-fields dt {
+    color: var(--color-muted);
+    font-size: 0.66rem;
+    font-weight: 800;
+}
+
+.personal-project-detail-fields dd {
+    margin: 5px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.personal-project-detail-description {
+    margin-top: 10px;
+    padding: 11px 12px;
+    border-left: 3px solid #38bdf8;
+    border-radius: 6px;
+    background: #f0f9ff;
+    color: #475569;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    white-space: pre-line;
+}
+
+.personal-project-workforce-list {
+    display: grid;
+    gap: 8px;
+}
+
+.personal-project-worker-card {
+    display: grid;
+    padding: 11px 12px;
+    border: 1px solid #dde6ef;
+    border-radius: 11px;
+    background: #fff;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px 10px;
+}
+
+.personal-project-worker-card.is-current-user {
+    border-color: #7dd3fc;
+    background: #f0f9ff;
+}
+
+.personal-project-worker-avatar {
+    position: relative;
+    display: inline-flex;
+    width: 38px;
+    height: 38px;
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    align-items: center;
+    justify-content: center;
+    color: #075f83;
+    background: #f8fafc;
+    font-size: 0.76rem;
+    font-weight: 900;
+}
+
+.personal-project-worker-avatar > img {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.personal-project-worker-avatar > span {
+    display: inline-flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+}
+
+.personal-project-worker-identity,
+.personal-project-worker-identity p {
+    min-width: 0;
+    margin: 0;
+}
+
+.personal-project-worker-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.personal-project-worker-name strong {
+    overflow: hidden;
+    color: #15324c;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.personal-project-worker-name span {
+    padding: 2px 6px;
+    border-radius: 999px;
+    color: #0369a1;
+    background: #dbeafe;
+    font-size: 0.6rem;
+    font-weight: 900;
+}
+
+.personal-project-worker-identity p {
+    margin-top: 3px;
+    overflow: hidden;
+    color: #64748b;
+    font-size: 0.66rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.personal-project-worker-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    color: #64748b;
+    font-size: 0.65rem;
+    white-space: nowrap;
+}
+
+.personal-project-worker-meta strong {
+    color: #0369a1;
+    font-size: 0.7rem;
+}
+
+.personal-project-worker-duty {
+    margin: 0;
+    grid-column: 2 / -1;
+    color: #475569;
+    font-size: 0.68rem;
+}
+
+.personal-project-detail-move-guide {
+    color: var(--color-muted);
+    font-size: 0.66rem;
+}
+
 .personal-assignment-list > .dashboard-empty-state {
     min-height: 240px;
 }
@@ -311,6 +542,31 @@
     .personal-assignment-duty,
     .personal-assignment-warning {
         grid-column: 1;
+    }
+
+    .personal-assignment-detail-button {
+        grid-column: 1;
+        justify-self: start;
+    }
+
+    .personal-project-detail-fields {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .personal-project-worker-card {
+        grid-template-columns: 38px minmax(0, 1fr);
+    }
+
+    .personal-project-worker-meta,
+    .personal-project-worker-duty {
+        grid-column: 2;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        white-space: normal;
+    }
+
+    .personal-project-detail-move-guide {
+        display: none;
     }
 }
 
@@ -6373,6 +6629,32 @@ html.has-workforce-board-maximized {
     gap: 8px;
 }
 
+.workforce-management-assignment-person[data-worker-detail] {
+    margin: -2px;
+    padding: 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.16s ease;
+}
+
+.workforce-management-assignment-person[data-worker-detail]:hover {
+    background: rgb(255 255 255 / 0.42);
+}
+
+.workforce-management-assignment-person[data-worker-detail]:hover > .workforce-management-assignment-person-copy > strong,
+.workforce-management-assignment-person[data-worker-detail]:hover > .workforce-management-assignment-person-copy > small,
+.workforce-management-assignment-person[data-worker-detail]:focus-visible > .workforce-management-assignment-person-copy > strong,
+.workforce-management-assignment-person[data-worker-detail]:focus-visible > .workforce-management-assignment-person-copy > small {
+    color: var(--color-primary-dark);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.workforce-management-assignment-person[data-worker-detail]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
 .workforce-management-worker-photo.is-assignment {
     width: 38px;
     height: 38px;
@@ -6410,22 +6692,6 @@ html.has-workforce-board-maximized {
     font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.workforce-management-assignment-metadata > .workforce-management-assignment-worker-detail {
-    flex: 0 0 auto;
-    border-color: #7aa7d4;
-    color: var(--color-primary-dark);
-    background: #fff;
-    cursor: pointer;
-    font-weight: 900;
-}
-
-.workforce-management-assignment-worker-detail:hover,
-.workforce-management-assignment-worker-detail:focus-visible {
-    border-color: var(--color-primary);
-    background: var(--color-primary-soft);
-    outline: none;
 }
 
 .workforce-management-board.is-editing .workforce-management-assignment {

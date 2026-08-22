@@ -149,6 +149,11 @@ class CompanyTransactionTests(unittest.TestCase):
 
 
 class AuthenticationTransactionTests(unittest.TestCase):
+    def setUp(self):
+        auth_context.invalidate_session_cache(
+            auth_context._hash_session_token("session-token")
+        )
+
     @staticmethod
     def _request():
         return SimpleNamespace(
@@ -170,6 +175,20 @@ class AuthenticationTransactionTests(unittest.TestCase):
         self.assertEqual(0, connection.rollback_count)
         self.assertTrue(connection.cursor_instance.closed)
         self.assertEqual(1, connection.close_count)
+
+    def test_authentication_reuses_short_lived_verification_cache(self):
+        connection = _Connection(_Cursor(fetch_row=self._user_row()))
+        with patch.object(
+            auth_context,
+            "get_db_connection",
+            return_value=connection,
+        ) as get_connection:
+            first_user = auth_context.authenticate_request(self._request())
+            second_user = auth_context.authenticate_request(self._request())
+
+        self.assertEqual(first_user, second_user)
+        get_connection.assert_called_once()
+        self.assertEqual(1, connection.commit_count)
 
     def test_authentication_touch_failure_rolls_back_and_logs(self):
         cursor = _Cursor(

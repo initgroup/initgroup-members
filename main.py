@@ -34,6 +34,7 @@ from backend.routers import (
     planning_scenarios,
     project_assignments,
     site_settings,
+    workforce_management,
 )
 
 
@@ -42,8 +43,6 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 PORTAL_SITE_FILE = FRONTEND_DIR / "index.html"
-PORTAL_ADMIN_HOME_FILE = FRONTEND_DIR / "pages" / "home.html"
-PORTAL_USER_HOME_FILE = FRONTEND_DIR / "pages" / "home-user.html"
 
 
 @asynccontextmanager
@@ -181,6 +180,7 @@ ADMIN_API_PATH_PREFIXES = (
     "/api/admin",
     "/api/planning",
     "/api/project-assignments",
+    "/api/workforce-management",
     "/api/home/dashboard",
 )
 
@@ -188,9 +188,6 @@ ADMIN_PAGE_ASSET_PATHS = frozenset(
     [f"/pages/{page_code}.html" for page_code in ADMIN_PAGE_CODES]
     + [f"/js/{page_code}.js" for page_code in ADMIN_PAGE_CODES]
 )
-
-INTERNAL_PAGE_TEMPLATE_PATHS = frozenset({"/pages/home-user.html"})
-
 
 def _matches_path_prefix(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(f"{prefix}/")
@@ -227,9 +224,6 @@ async def enforce_api_authentication(request, call_next):
     normalized_direct_path = _normalized_direct_path(path)
     if path.startswith(SENSITIVE_DIRECT_PATH_PREFIXES):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
-    if normalized_direct_path in INTERNAL_PAGE_TEMPLATE_PATHS:
-        return JSONResponse(status_code=404, content={"detail": "Not found"})
-
     method = request.method.upper()
     if (
         path.startswith("/api/")
@@ -275,7 +269,8 @@ async def enforce_api_authentication(request, call_next):
                     status_code=403,
                     content={"detail": "초기 비밀번호를 먼저 변경해 주세요."},
                 )
-                refresh_session_cookie(request, response)
+                if getattr(request.state, "auth_session_touched", False):
+                    refresh_session_cookie(request, response)
                 response.headers["X-INIT-Session-TTL-Seconds"] = str(
                     get_session_ttl_seconds()
                 )
@@ -291,7 +286,8 @@ async def enforce_api_authentication(request, call_next):
                     status_code=403,
                     content={"detail": "관리자 권한이 필요합니다."},
                 )
-                refresh_session_cookie(request, response)
+                if getattr(request.state, "auth_session_touched", False):
+                    refresh_session_cookie(request, response)
                 response.headers["X-INIT-Session-TTL-Seconds"] = str(
                     get_session_ttl_seconds()
                 )
@@ -303,7 +299,8 @@ async def enforce_api_authentication(request, call_next):
 
     response = await call_next(request)
     if session_authenticated:
-        refresh_session_cookie(request, response)
+        if getattr(request.state, "auth_session_touched", False):
+            refresh_session_cookie(request, response)
         response.headers["X-INIT-Session-TTL-Seconds"] = str(
             get_session_ttl_seconds()
         )
@@ -319,7 +316,7 @@ async def add_cache_headers(request, call_next):
         or path in {"/", "/app", "/index.html"}
         or path.startswith(("/js/", "/css/", "/pages/", "/config/"))
         or path.endswith((".html", ".js", ".css"))
-    ):
+    ) and "cache-control" not in response.headers:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -362,6 +359,11 @@ app.include_router(
     tags=["project-assignments"],
 )
 app.include_router(
+    workforce_management.router,
+    prefix="/api/workforce-management",
+    tags=["workforce-management"],
+)
+app.include_router(
     admin_notices.router,
     prefix="/api/admin/notices",
     tags=["admin-notices"],
@@ -391,14 +393,6 @@ def authenticated_portal():
 @app.get("/index.html", include_in_schema=False)
 def redirect_to_authenticated_portal():
     return RedirectResponse(url="/app", status_code=308)
-
-
-@app.get("/pages/home.html", include_in_schema=False)
-def role_specific_home(request: Request):
-    user = authenticate_request(request)
-    role_code = str(user.get("roleCode") or "USER").strip().upper()
-    home_file = PORTAL_ADMIN_HOME_FILE if role_code == "ADMIN" else PORTAL_USER_HOME_FILE
-    return FileResponse(home_file)
 
 
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

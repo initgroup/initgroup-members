@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
+# Business queries read complete CLOB/BLOB values. Fetching them directly as
+# str/bytes avoids a separate LOB round trip for every row.
+oracledb.defaults.fetch_lobs = False
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -140,13 +143,13 @@ def get_db_pool():
             1000,
             min(30000, int(os.getenv("DB_POOL_WAIT_TIMEOUT_MS", "30000"))),
         )
-        pool_min = max(1, int(os.getenv("DB_POOL_MIN", "1")))
+        pool_min = max(1, int(os.getenv("DB_POOL_MIN", "3")))
         pool_max = max(pool_min, int(os.getenv("DB_POOL_MAX", "6")))
         pool_increment = max(
             1,
             min(
                 pool_max - pool_min or 1,
-                int(os.getenv("DB_POOL_INCREMENT", "1")),
+                int(os.getenv("DB_POOL_INCREMENT", "2")),
             ),
         )
         pool_args = {
@@ -239,7 +242,7 @@ def get_db_connection():
             int(os.getenv("DB_CALL_TIMEOUT_MS", "60000")),
         )
         elapsed = time.monotonic() - started_at
-        warn_seconds = float(os.getenv("DB_POOL_ACQUIRE_WARN_SECONDS", "3"))
+        warn_seconds = float(os.getenv("DB_POOL_ACQUIRE_WARN_SECONDS", "1"))
         log_method = logger.warning if elapsed >= warn_seconds else logger.info
         log_method("[DB] acquire done. elapsed=%.3fs, %s", elapsed, _pool_snapshot(pool))
 

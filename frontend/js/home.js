@@ -88,153 +88,6 @@
         });
     }
 
-    function formattedMm(value) {
-        const numeric = Number(value || 0);
-        if (!Number.isFinite(numeric)) return "0";
-        return numeric.toLocaleString("ko-KR", {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2
-        });
-    }
-
-    function personalTimelineLabel(statusCode) {
-        const status = String(statusCode || "COMPLETED").toUpperCase();
-        if (status === "ACTIVE") return "투입 중";
-        if (status === "UPCOMING") return "투입 예정";
-        return "투입 완료";
-    }
-
-    function renderPersonalMonthlyAllocations(allocations) {
-        const chart = query("#homePersonalMonthlyChart");
-        Common.dom.clear(chart);
-        const rows = Array.isArray(allocations) ? allocations : [];
-        const maximum = Math.max(1, ...rows.map((item) => Number(item.mm || 0)));
-        rows.forEach((item) => {
-            const mm = Number(item.mm || 0);
-            const month = String(item.month || "");
-            const column = Common.dom.element("div", { className: "personal-month-column" });
-            const track = Common.dom.element("div", {
-                className: "personal-month-bar-track",
-                attrs: {
-                    role: "img",
-                    "aria-label": `${month}, ${formattedMm(mm)} M/M`
-                }
-            });
-            const bar = Common.dom.element("i", {
-                className: `personal-month-bar${mm > 1 ? " is-overallocated" : ""}`,
-                attrs: { title: `${formattedMm(mm)} M/M` }
-            });
-            const height = maximum ? mm / maximum * 100 : 0;
-            bar.style.setProperty("--personal-mm-height", `${Math.max(mm ? 4 : 0, height)}%`);
-            track.appendChild(bar);
-            column.append(track, Common.dom.element("span", { text: `${Number(month.slice(5)) || "-"}월` }));
-            chart.appendChild(column);
-        });
-        if (!rows.length) chart.appendChild(emptyState("표시할 월별 투입 정보가 없습니다."));
-    }
-
-    function renderPersonalAssignments(assignments) {
-        const list = query("#homePersonalAssignmentList");
-        Common.dom.clear(list);
-        const rows = Array.isArray(assignments) ? assignments : [];
-        query("#homePersonalAssignmentCount").textContent = `${formattedNumber(rows.length)}건`;
-        if (!rows.length) {
-            list.appendChild(emptyState("등록된 개인 투입 프로젝트가 없습니다."));
-            return;
-        }
-
-        rows.forEach((assignment) => {
-            const timelineStatus = String(assignment.timelineStatusCode || "COMPLETED").toLowerCase();
-            const card = Common.dom.element("article", { className: "personal-assignment-card" });
-            const heading = Common.dom.element("div", { className: "personal-assignment-heading" });
-            heading.append(
-                Common.dom.element("span", {
-                    className: `personal-assignment-status is-${timelineStatus}`,
-                    text: personalTimelineLabel(assignment.timelineStatusCode)
-                }),
-                Common.dom.element("strong", { text: assignment.projectName || "프로젝트명 미정" })
-            );
-            const assignmentType = String(assignment.assignmentStatusCode || "CONFIRMED").toUpperCase() === "PLANNED"
-                ? "계획 투입"
-                : "확정 투입";
-            const customer = assignment.customerName || "고객사 미정";
-            const period = `${assignment.assignmentStartDate || "-"} ~ ${assignment.assignmentEndDate || "-"}`;
-            const duty = [assignment.projectRoleName, assignment.primaryDuty].filter(Boolean).join(" · ");
-            card.append(
-                heading,
-                Common.dom.element("strong", {
-                    className: "personal-assignment-mm",
-                    text: `${formattedMm(assignment.totalMm)} M/M`
-                }),
-                Common.dom.element("p", {
-                    className: "personal-assignment-meta",
-                    text: `${customer} · ${assignmentType} · ${period}`
-                }),
-                Common.dom.element("p", {
-                    className: "personal-assignment-duty",
-                    text: duty || "담당 역할과 업무가 등록되지 않았습니다."
-                })
-            );
-            if (assignment.allocationDataQualityError) {
-                card.appendChild(Common.dom.element("p", {
-                    className: "personal-assignment-warning",
-                    text: "월별 배분 정보를 확인할 수 없어 관리자 확인이 필요합니다."
-                }));
-            }
-            list.appendChild(card);
-        });
-    }
-
-    function renderPersonalDashboard(data) {
-        const summary = data.summary || {};
-        const currentMonth = String(data.currentMonth || "");
-        query("#homePersonalActiveCount").textContent = formattedNumber(summary.activeProjectCount || 0);
-        query("#homePersonalUpcomingCount").textContent = formattedNumber(summary.upcomingProjectCount || 0);
-        query("#homePersonalCurrentMm").textContent = formattedMm(summary.currentMonthMm || 0);
-        query("#homePersonalTotalCount").textContent = formattedNumber(summary.totalProjectCount || 0);
-        query("#homePersonalCurrentMonth").textContent = currentMonth
-            ? `${Number(currentMonth.slice(5))}월 배분 합계`
-            : "이번 달 배분 합계";
-        query("#homePersonalUpdatedAt").textContent = `${new Intl.DateTimeFormat("ko-KR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit"
-        }).format(new Date(data.generatedAt || Date.now()))} 기준`;
-        renderPersonalMonthlyAllocations(data.monthlyAllocations);
-        renderPersonalAssignments(data.assignments);
-        renderNotices(data.notices);
-    }
-
-    async function loadPersonalDashboard() {
-        const requestId = ++dashboardRequestId;
-        const status = query("#homePersonalStatus");
-        Common.ui.setInlineStatus(status, "나의 프로젝트 투입 현황을 불러오고 있습니다.");
-        try {
-            const payload = await Common.api.request("/home/my-dashboard", {
-                method: "GET",
-                signal: controller.signal,
-                showLoading: false
-            });
-            if (requestId !== dashboardRequestId) return;
-            const data = Common.data.get(payload) || {};
-            if (data.dashboardType !== "personal") {
-                throw new Error("개인 홈 데이터를 확인하지 못했습니다.");
-            }
-            renderPersonalDashboard(data);
-            Common.ui.setInlineStatus(status, "");
-        } catch (error) {
-            if (error?.name === "AbortError" || requestId !== dashboardRequestId) return;
-            renderPersonalDashboard({
-                generatedAt: Date.now(),
-                summary: {},
-                monthlyAllocations: [],
-                assignments: [],
-                notices: []
-            });
-            Common.ui.setInlineStatus(status, error.message || "개인 프로젝트 현황을 불러오지 못했습니다.", "error");
-        }
-    }
-
     function integerAmount(value) {
         const text = String(value ?? "0").trim();
         try {
@@ -525,21 +378,15 @@
             root = context.root;
             controller = new AbortController();
             const user = App.getUser();
-            if (App.isAdmin()) {
-                query("#homeGreeting").textContent = `${user?.userName || user?.loginId || "관리자"}님, 사업 파이프라인과 인력계획의 주요 변화를 확인하세요.`;
-                initializeYears();
-                query("#homeYearSelect").addEventListener("change", loadDashboard, { signal: controller.signal });
-                query("#homeRefreshButton").addEventListener("click", loadDashboard, { signal: controller.signal });
-                query("#homeOpenPlanningButton").addEventListener("click", () => App.navigate("workforce-planning", {
-                    context: { planYear: Number(query("#homeYearSelect").value) }
-                }), { signal: controller.signal });
-                await loadDashboard();
-                return;
-            }
-
-            query("#homePersonalGreeting").textContent = `${user?.userName || user?.loginId || "사용자"}님, 본인의 프로젝트 투입 일정과 월별 M/M을 확인하세요.`;
-            query("#homePersonalRefreshButton").addEventListener("click", loadPersonalDashboard, { signal: controller.signal });
-            await loadPersonalDashboard();
+            if (!App.isAdmin()) throw new Error("관리자 권한이 필요합니다.");
+            query("#homeGreeting").textContent = `${user?.userName || user?.loginId || "관리자"}님, 사업 파이프라인과 인력계획의 주요 변화를 확인하세요.`;
+            initializeYears();
+            query("#homeYearSelect").addEventListener("change", loadDashboard, { signal: controller.signal });
+            query("#homeRefreshButton").addEventListener("click", loadDashboard, { signal: controller.signal });
+            query("#homeOpenPlanningButton").addEventListener("click", () => App.navigate("workforce-planning", {
+                context: { planYear: Number(query("#homeYearSelect").value) }
+            }), { signal: controller.signal });
+            await loadDashboard();
         },
 
         activate() {},

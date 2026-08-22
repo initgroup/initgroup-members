@@ -44,6 +44,7 @@
     let editOrders = new Map();
     let editRemovals = new Map();
     let activeBoardDrag = null;
+    let renderCalculationCache = null;
 
     function query(selector) {
         return root?.querySelector(selector) || null;
@@ -58,23 +59,6 @@
 
     function pick(row, ...keys) {
         return Common.data.pick(row, ...keys);
-    }
-
-    async function loadDepartmentConfig() {
-        const response = await fetch("/config/departments.json", {
-            method: "GET",
-            credentials: "same-origin",
-            cache: "no-store",
-            signal: controller.signal
-        });
-        if (!response.ok) throw new Error("부서 설정을 불러오지 못했습니다.");
-        const payload = await response.json();
-        departments = Array.isArray(payload?.departments)
-            ? [...payload.departments]
-                .filter((department) => department?.code && department?.label)
-                .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder))
-            : [];
-        if (!departments.length) throw new Error("등록된 부서 설정이 없습니다.");
     }
 
     function populateWorkerFilterOptions() {
@@ -129,14 +113,18 @@
 
     function workerPhoto(worker, detail = false) {
         const frame = element("div", detail ? "workforce-management-worker-photo is-detail" : "workforce-management-worker-photo");
+        const employeeName = String(pick(worker, "employeeName", "EMPLOYEE_NAME") || "인력");
         const placeholder = element("span", "", "사진 없음");
         frame.appendChild(placeholder);
         const userId = pick(worker, "userId", "USER_ID");
         const hasPhoto = Boolean(pick(worker, "photoFileName", "PHOTO_FILE_NAME"));
         if (!userId || !hasPhoto) return frame;
         const image = element("img");
-        image.alt = `${pick(worker, "employeeName", "EMPLOYEE_NAME") || "인력"} 프로필 사진`;
-        image.src = `/api/admin/users/${encodeURIComponent(userId)}/photo?v=${encodeURIComponent(pick(worker, "photoUpdatedAt", "PHOTO_UPDATED_AT") || "")}`;
+        image.alt = `${employeeName} 프로필 사진`;
+        image.loading = detail ? "eager" : "lazy";
+        image.decoding = "async";
+        image.fetchPriority = detail ? "high" : "low";
+        image.src = `/api/admin/users/${encodeURIComponent(userId)}/photo?thumbnail=true&v=${encodeURIComponent(pick(worker, "photoUpdatedAt", "PHOTO_UPDATED_AT") || "")}`;
         image.addEventListener("load", () => { placeholder.hidden = true; });
         image.addEventListener("error", () => { image.remove(); placeholder.hidden = false; });
         frame.prepend(image);
@@ -292,8 +280,10 @@
             editRemovals.set(key, { laneKey: context.lane.key });
             syncEditDraftControls(`${employeeName(context.assignment)}을(를) 투입 해제 대상으로 표시했습니다. 변경사항 저장을 눌러 반영해 주세요.`, "success");
         }
-        renderWorkers();
-        renderLanes();
+        withRenderCalculationCache(() => {
+            renderWorkers();
+            renderLanes();
+        });
     }
 
     function syncEditDraftControls(message = "", type = "") {
@@ -546,8 +536,7 @@
         board.style.setProperty("--workforce-render-month-width", `${fittedMonthWidth}px`);
     }
 
-    function timelinePosition(startDate, endDate) {
-        const months = timelineMonths();
+    function timelinePosition(startDate, endDate, months = timelineMonths()) {
         const firstMonth = months[0];
         const lastMonth = months[months.length - 1];
         const startMonth = String(startDate || "").slice(0, 7);
@@ -732,9 +721,32 @@
             .filter((result) => !result.valid);
     }
 
-    function allocationState(lanes = allLanes()) {
+    function withRenderCalculationCache(callback) {
+        if (renderCalculationCache) return callback();
+        renderCalculationCache = {};
+        try {
+            return callback();
+        } finally {
+            renderCalculationCache = null;
+        }
+    }
+
+    function defaultCalculationLanes() {
+        if (!renderCalculationCache) return allLanes();
+        if (!renderCalculationCache.lanes) {
+            renderCalculationCache.lanes = allLanes();
+        }
+        return renderCalculationCache.lanes;
+    }
+
+    function allocationState(lanes = null) {
+        const useDefaultLanes = lanes === null;
+        if (useDefaultLanes && renderCalculationCache?.allocationState) {
+            return renderCalculationCache.allocationState;
+        }
+        const resolvedLanes = useDefaultLanes ? defaultCalculationLanes() : lanes;
         const capacity = new Map();
-        lanes.forEach((lane) => {
+        resolvedLanes.forEach((lane) => {
             boardAssignments(lane).forEach((assignment) => {
                 if (isPendingRemoval(assignmentIdentity(lane, assignment))) return;
                 const key = workerKey(assignment);
@@ -762,7 +774,11 @@
         const warnings = Array.from(capacity.values())
             .filter((item) => item.projects.size > 1)
             .sort((left, right) => left.month.localeCompare(right.month) || left.employeeName.localeCompare(right.employeeName));
-        return { capacity, warnings };
+        const result = { capacity, warnings };
+        if (useDefaultLanes && renderCalculationCache) {
+            renderCalculationCache.allocationState = result;
+        }
+        return result;
     }
 
     function referenceWorkers(lanes = allLanes()) {
@@ -786,10 +802,17 @@
         return Array.from(workers.values());
     }
 
-    function workerStatistics(lanes = allLanes()) {
-        const { capacity } = allocationState(lanes);
+    function workerStatistics(lanes = null) {
+        const useDefaultLanes = lanes === null;
+        if (useDefaultLanes && renderCalculationCache?.workerStatistics) {
+            return renderCalculationCache.workerStatistics;
+        }
+        const resolvedLanes = useDefaultLanes ? defaultCalculationLanes() : lanes;
+        const { capacity } = useDefaultLanes
+            ? allocationState()
+            : allocationState(resolvedLanes);
         const months = yearMonths();
-        return referenceWorkers(lanes).map((worker) => {
+        const result = referenceWorkers(resolvedLanes).map((worker) => {
             const key = worker.workerKey;
             const monthly = months.map((month) => capacity.get(`${key}|${month}`) || {
                 workerKey: key,
@@ -812,6 +835,10 @@
                 overlapCount: monthly.filter((item) => item.projects.size > 1).length
             };
         });
+        if (useDefaultLanes && renderCalculationCache) {
+            renderCalculationCache.workerStatistics = result;
+        }
+        return result;
     }
 
     function renderProjectOptions() {
@@ -928,8 +955,10 @@
             const control = query(selector);
             if (control && control.value !== workerNameFilter) control.value = workerNameFilter;
         });
-        renderWorkers();
-        renderLanes();
+        withRenderCalculationCache(() => {
+            renderWorkers();
+            renderLanes();
+        });
     }
 
     function renderWorkers() {
@@ -946,6 +975,7 @@
             container.appendChild(element("p", "empty-state", "조건에 맞는 인력이 없습니다."));
             return;
         }
+        const fragment = document.createDocumentFragment();
         workers.forEach((worker) => {
             const companyWarnings = workerCompanyWarnings(worker);
             const card = element("article", `workforce-management-worker-card${worker.overlapCount ? " has-overlap" : ""}${companyWarnings.length ? " has-company-warning" : ""}`);
@@ -988,8 +1018,9 @@
                 warning.title = companyWarnings.map((item) => item.reason).join("\n");
                 card.appendChild(warning);
             }
-            container.appendChild(card);
+            fragment.appendChild(card);
         });
+        container.replaceChildren(fragment);
     }
 
     function renderProjectPalette() {
@@ -1078,8 +1109,8 @@
         node.classList.toggle("is-pending-order", isPendingOrderChange(lane, identity));
     }
 
-    function appendProjectDropCells(timeline, lane, rowSpan) {
-        timelineMonths().forEach((month, index) => {
+    function appendProjectDropCells(timeline, lane, rowSpan, months) {
+        months.forEach((month, index) => {
             const cell = element("div", "workforce-management-drop-cell");
             cell.style.gridColumn = String(index + 1);
             cell.style.gridRow = `1 / span ${rowSpan}`;
@@ -1096,11 +1127,13 @@
         const scopedLanes = projectScopedLanes();
         const lanes = scopedLanes.filter((lane) => laneMatches(lane, keyword)).sort(compareProjectLanes);
         const { capacity } = allocationState();
+        const months = timelineMonths();
         container.replaceChildren();
         if (!lanes.length) {
             container.appendChild(element("p", "empty-state", "조회 조건에 해당하는 프로젝트가 없습니다."));
             return;
         }
+        const fragment = document.createDocumentFragment();
         lanes.forEach((lane) => {
             const laneAssignments = boardAssignments(lane);
             const article = element("article", `workforce-management-lane is-${lane.type}`);
@@ -1122,8 +1155,8 @@
             const timeline = element("div", "workforce-management-lane-timeline");
             timeline.dataset.projectTimelineLane = lane.key;
             timeline.setAttribute("aria-label", `${lane.name} 프로젝트 기간과 투입 인력`);
-            if (editMode) appendProjectDropCells(timeline, lane, Math.max(2, laneAssignments.length + 1));
-            const projectPosition = timelinePosition(lane.startDate, lane.endDate);
+            if (editMode) appendProjectDropCells(timeline, lane, Math.max(2, laneAssignments.length + 1), months);
+            const projectPosition = timelinePosition(lane.startDate, lane.endDate, months);
             if (projectPosition) {
                 const band = element("div", "workforce-management-project-period");
                 band.style.gridColumn = `${projectPosition.start} / span ${projectPosition.span}`;
@@ -1134,7 +1167,8 @@
             laneAssignments.forEach((assignment, index) => {
                 const position = timelinePosition(
                     pick(assignment, "assignmentStartDate", "ASSIGNMENT_START_DATE"),
-                    pick(assignment, "assignmentEndDate", "ASSIGNMENT_END_DATE")
+                    pick(assignment, "assignmentEndDate", "ASSIGNMENT_END_DATE"),
+                    months
                 );
                 if (!position) return;
                 const assignmentType = assignmentStatusCode(lane, assignment).toLowerCase();
@@ -1149,6 +1183,11 @@
                 const positionName = pick(worker, "positionName", "POSITION_NAME") || "직급 미지정";
                 const roleName = pick(assignment, "projectRoleName", "PROJECT_ROLE_NAME") || "역할 미지정";
                 const person = element("div", "workforce-management-assignment-person");
+                person.dataset.workerDetail = workerKey(assignment);
+                person.setAttribute("role", "button");
+                person.setAttribute("tabindex", "0");
+                person.setAttribute("aria-label", `${employeeName(assignment)} 인력 상세정보`);
+                person.title = "사진, 이름 또는 부서를 클릭하면 인력 상세정보를 확인할 수 있습니다.";
                 const photo = workerPhoto(worker);
                 photo.classList.add("is-assignment");
                 const personCopy = element("div", "workforce-management-assignment-person-copy");
@@ -1163,13 +1202,6 @@
                     `역할 ${roleName}`,
                     `${assignmentStatusLabel(lane, assignment)} · ${fixed(pick(assignment, "totalMm", "TOTAL_MM"))} M/M`
                 ].forEach((text) => metadata.appendChild(element("span", "", text)));
-                const detail = element("span", "workforce-management-assignment-worker-detail", "상세");
-                detail.dataset.workerDetail = workerKey(assignment);
-                detail.setAttribute("role", "button");
-                detail.setAttribute("tabindex", "0");
-                detail.setAttribute("aria-label", `${employeeName(assignment)} 인력 상세정보`);
-                detail.title = "인력 상세정보";
-                metadata.appendChild(detail);
                 personCopy.appendChild(metadata);
                 person.append(photo, personCopy);
                 bar.append(person, element("span", "workforce-management-assignment-settings", isEditDraft(assignment) ? "✎" : "⚙"));
@@ -1203,8 +1235,9 @@
                 timeline.appendChild(empty);
             }
             article.append(info, timeline);
-            container.appendChild(article);
+            fragment.appendChild(article);
         });
+        container.replaceChildren(fragment);
     }
 
     function visibleWorkers(lanes = projectScopedLanes()) {
@@ -1308,43 +1341,57 @@
     }
 
     function renderLanes() {
-        const descriptions = {
-            worker: "인력별로 프로젝트 기간 막대를 나누어 여러 프로젝트 투입을 한 번에 비교합니다.",
-            project: "프로젝트별 기간과 10명 이상의 투입 인력을 세로로 확장하여 비교합니다."
-        };
-        query("#workforceManagementTimelineDescription").textContent = descriptions[boardView];
-        if (boardView === "project") renderProjectLanes();
-        else renderWorkerMatrix();
+        return withRenderCalculationCache(() => {
+            const descriptions = {
+                worker: "인력별로 프로젝트 기간 막대를 나누어 여러 프로젝트 투입을 한 번에 비교합니다.",
+                project: "프로젝트별 기간과 10명 이상의 투입 인력을 세로로 확장하여 비교합니다."
+            };
+            query("#workforceManagementTimelineDescription").textContent = descriptions[boardView];
+            if (boardView === "project") renderProjectLanes();
+            else renderWorkerMatrix();
+        });
     }
 
     function renderAll() {
-        renderProjectOptions();
-        renderMetrics();
-        renderAlerts();
-        renderWorkers();
-        renderProjectPalette();
-        renderMonthHeader();
-        renderLanes();
+        return withRenderCalculationCache(() => {
+            renderProjectOptions();
+            renderMetrics();
+            renderAlerts();
+            renderWorkers();
+            renderProjectPalette();
+            renderMonthHeader();
+            renderLanes();
+        });
     }
 
-    async function loadDashboard(preferredScenarioId = "") {
+    async function loadDashboard(preferredScenarioId = "", preferredYear = null) {
         const requestId = ++requestSequence;
-        const year = selectedYear();
+        const requestedYear = Number(preferredYear);
+        const year = Number.isInteger(requestedYear) && requestedYear >= 1900 && requestedYear <= 2100
+            ? requestedYear
+            : selectedYear();
         const requestedScenarioId = preferredScenarioId || scenario?.scenarioId || "";
         Common.ui.setInlineStatus(query("#workforceManagementStatus"), `${year}년과 수행기간이 겹치는 프로젝트와 투입정보를 불러오고 있습니다.`);
         query("#workforceManagementRefreshButton").disabled = true;
         try {
-            const [confirmedPayload, referencePayload, scenarioPayload] = await Promise.all([
-                Common.api.request(`/project-assignments/workspace?projectYear=${encodeURIComponent(year)}&refreshToken=${Date.now()}`, { signal: controller.signal, showLoading: false }),
-                Common.api.request(`/planning/scenarios/references?planYear=${encodeURIComponent(year)}&includeProjects=false&includeActualCapacity=false`, { signal: controller.signal, showLoading: false }),
-                Common.api.request(`/planning/scenarios?planYear=${encodeURIComponent(year)}&includeDetail=true${requestedScenarioId ? `&scenarioId=${encodeURIComponent(requestedScenarioId)}` : ""}`, { signal: controller.signal, showLoading: false })
-            ]);
+            const payload = await Common.api.request(
+                `/workforce-management/bootstrap?planYear=${encodeURIComponent(year)}${requestedScenarioId ? `&scenarioId=${encodeURIComponent(requestedScenarioId)}` : ""}`,
+                { signal: controller.signal, showLoading: false }
+            );
             if (requestId !== requestSequence) return false;
-            confirmedData = Common.data.get(confirmedPayload) || { projects: [], assignments: [], companies: [] };
-            references = Common.data.get(referencePayload) || { workers: [], actualCapacity: [] };
-            const scenarioData = Common.data.get(scenarioPayload) || {};
-            scenarios = scenarioData.scenarios || [];
-            scenario = scenarioData.scenario || null;
+            const dashboard = Common.data.get(payload) || {};
+            establishmentYear = Number(dashboard.establishmentYear) || null;
+            departments = Array.isArray(dashboard.departments)
+                ? [...dashboard.departments]
+                    .filter((department) => department?.code && department?.label)
+                    .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder))
+                : [];
+            populateWorkerFilterOptions();
+            initializeYears(year);
+            confirmedData = dashboard.confirmed || { projects: [], assignments: [], companies: [] };
+            references = dashboard.references || { workers: [], actualCapacity: [] };
+            scenarios = dashboard.scenarios || [];
+            scenario = dashboard.scenario || null;
             renderAll();
             requestAnimationFrame(() => {
                 applyTimelineScale();
@@ -2582,34 +2629,6 @@
         }
     }
 
-    async function loadEstablishmentYear() {
-        try {
-            const payload = await Common.api.request("/admin/companies/headquarters", {
-                signal: controller.signal,
-                showLoading: false
-            });
-            const data = Common.data.get(payload) || {};
-            const company = pick(data, "company", "COMPANY") || {};
-            const histories = pick(data, "histories", "HISTORIES") || [];
-            const establishedHistory = histories.find((history) => (
-                String(pick(history, "historyTypeCode", "HISTORY_TYPE_CODE") || "").toUpperCase() === "ESTABLISHED"
-            ));
-            const establishedDate = String(
-                pick(company, "establishedDate", "ESTABLISHED_DATE")
-                || pick(establishedHistory, "historyDate", "HISTORY_DATE")
-                || ""
-            );
-            const match = establishedDate.match(/^(\d{4})-/);
-            const year = match ? Number(match[1]) : 0;
-            return Number.isInteger(year) && year >= 1900 && year <= 2100 ? year : null;
-        } catch (error) {
-            if (error?.name !== "AbortError") {
-                console.warn("[workforce-management] 본사 설립일을 불러오지 못했습니다.", error);
-            }
-            return null;
-        }
-    }
-
     function initializeYears(preferredYear) {
         const currentYear = new Date().getFullYear();
         const requested = Number(preferredYear);
@@ -2695,9 +2714,11 @@
             ? "편집 모드를 종료합니다. 저장하지 않은 변경사항은 변경사항 저장 버튼으로 먼저 반영해 주세요."
             : "편집 모드를 켜면 인력 추가, 배치 순서 변경 및 일괄 저장을 사용할 수 있습니다.";
         query("#workforceManagementBoard").classList.toggle("is-editing", projectEditActive());
-        renderWorkers();
-        renderProjectPalette();
-        renderLanes();
+        withRenderCalculationCache(() => {
+            renderWorkers();
+            renderProjectPalette();
+            renderLanes();
+        });
         syncEditDraftControls(
             !editMode && !nextEditMode ? "편집 모드를 종료했습니다. 저장된 투입정보만 표시합니다." : "",
             "success"
@@ -2968,8 +2989,10 @@
             }, { signal: controller.signal });
         });
         query("#workforceManagementSearch").addEventListener("input", () => {
-            renderWorkers();
-            renderLanes();
+            withRenderCalculationCache(() => {
+                renderWorkers();
+                renderLanes();
+            });
         }, { signal: controller.signal });
         [query("#workforceManagementWorkerType"), query("#workforceManagementMatrixWorkerType")].forEach((control) => {
             control.addEventListener("change", (event) => applyWorkerFilters(event.currentTarget.value, workerNameFilter), { signal: controller.signal });
@@ -3264,13 +3287,11 @@
             editOrders = new Map();
             editRemovals = new Map();
             activeBoardDrag = null;
-            await loadDepartmentConfig();
-            populateWorkerFilterOptions();
-            establishmentYear = await loadEstablishmentYear();
-            initializeYears(context.routeContext?.planYear || context.routeContext?.projectYear);
+            const initialYear = context.routeContext?.planYear || context.routeContext?.projectYear || new Date().getFullYear();
+            initializeYears(initialYear);
             bindEvents();
             renderAll();
-            await loadDashboard(context.routeContext?.scenarioId || "");
+            await loadDashboard(context.routeContext?.scenarioId || "", initialYear);
         },
 
         async beforeLeave() {
@@ -3310,9 +3331,7 @@
         async activate(context = {}) {
             const requestedYear = Number(context.routeContext?.planYear || context.routeContext?.projectYear);
             const targetYear = Number.isInteger(requestedYear) ? requestedYear : selectedYear();
-            establishmentYear = await loadEstablishmentYear();
-            initializeYears(targetYear);
-            await loadDashboard(context.routeContext?.scenarioId || scenario?.scenarioId || "");
+            await loadDashboard(context.routeContext?.scenarioId || scenario?.scenarioId || "", targetYear);
         },
 
         async destroy() {

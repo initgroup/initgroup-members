@@ -22,6 +22,7 @@
         scriptPages: [...(window.PAGE_FILE_CONFIG?.scriptPages || [])]
     };
     const DEFAULT_PAGE_CODE = "home";
+    const USER_DEFAULT_PAGE_CODE = "my-project-assignments";
     const PAGE_ALIASES = {
         "project-assignments": { pageCode: "workforce-management", context: { initialMode: "confirmed" } },
         "workforce-planning": { pageCode: "workforce-management", context: { initialMode: "planning" } }
@@ -122,6 +123,13 @@
 
     function getPage(pageCode) {
         return pageMap.get(pageCode) || null;
+    }
+
+    function defaultPageCode() {
+        const preferred = roleCode() === "ADMIN" ? DEFAULT_PAGE_CODE : USER_DEFAULT_PAGE_CODE;
+        if (pageMap.has(preferred)) return preferred;
+        if (pageMap.has(USER_DEFAULT_PAGE_CODE)) return USER_DEFAULT_PAGE_CODE;
+        return Array.from(pageMap.keys()).find((pageCode) => pageCode !== "login") || "login";
     }
 
     function hasRegisteredPageFiles(pageCode) {
@@ -408,12 +416,12 @@
             const openPageCount = Array.from(new Set([
                 ...this.pages.keys(),
                 ...loadedScripts.keys()
-            ])).filter((pageCode) => pageCode !== "login" && pageCode !== DEFAULT_PAGE_CODE).length;
+            ])).filter((pageCode) => pageCode !== "login" && pageCode !== defaultPageCode()).length;
             if (currentCloseButton) {
                 const canCloseCurrent = Boolean(
                     this.current
                     && this.current.pageCode !== "login"
-                    && this.current.pageCode !== DEFAULT_PAGE_CODE
+                    && this.current.pageCode !== defaultPageCode()
                 );
                 currentCloseButton.disabled = !canCloseCurrent;
                 currentCloseButton.setAttribute(
@@ -568,12 +576,12 @@
             const recentEntry = Array.from(this.pages.values())
                 .filter((entry) => entry.pageCode !== "login" && entry.pageCode !== excludedPageCode)
                 .sort((left, right) => (right.lastActivatedOrder || 0) - (left.lastActivatedOrder || 0))[0];
-            return recentEntry?.pageCode || DEFAULT_PAGE_CODE;
+            return recentEntry?.pageCode || defaultPageCode();
         },
 
         async closeCurrent() {
             const entry = this.current;
-            if (!entry || entry.pageCode === "login" || entry.pageCode === DEFAULT_PAGE_CODE) return;
+            if (!entry || entry.pageCode === "login" || entry.pageCode === defaultPageCode()) return;
             const fallbackPageCode = this.fallbackPageCode(entry.pageCode);
             if (!(await this.canLeaveCurrent(fallbackPageCode, { force: true, closing: true }))) return;
             this.requestId += 1;
@@ -590,7 +598,7 @@
             const pageCodes = Array.from(new Set([
                 ...this.pages.keys(),
                 ...loadedScripts.keys()
-            ])).filter((pageCode) => pageCode !== "login" && pageCode !== DEFAULT_PAGE_CODE);
+            ])).filter((pageCode) => pageCode !== "login" && pageCode !== defaultPageCode());
             if (!pageCodes.length) return;
             const confirmed = await Common.ui.confirm(
                 `열려 있는 ${pageCodes.length}개 페이지를 모두 닫으시겠습니까? 저장하지 않은 화면 상태는 사라집니다.`,
@@ -607,7 +615,7 @@
                     releasePageScript(pageCode);
                 }
             }
-            await this.load(DEFAULT_PAGE_CODE, {
+            await this.load(defaultPageCode(), {
                 replaceHash: true,
                 skipBeforeLeave: true
             });
@@ -635,24 +643,24 @@
                 pageCode = "login";
                 page = getPage(pageCode);
             } else if (state.user && pageCode === "login") {
-                pageCode = "home";
+                pageCode = defaultPageCode();
                 page = getPage(pageCode);
             }
 
             if (!page) {
-                pageCode = state.user ? "home" : "login";
+                pageCode = state.user ? defaultPageCode() : "login";
                 page = getPage(pageCode);
             }
 
             if (!hasRegisteredPageFiles(pageCode)) {
                 Common.ui.toast("등록되지 않은 화면입니다.", "error");
-                pageCode = state.user ? "home" : "login";
+                pageCode = state.user ? defaultPageCode() : "login";
                 page = getPage(pageCode);
             }
 
             if (!isAllowed(page)) {
                 Common.ui.toast("이 메뉴에 접근할 권한이 없습니다.", "warning");
-                pageCode = "home";
+                pageCode = defaultPageCode();
                 page = getPage(pageCode);
             }
 
@@ -746,7 +754,7 @@
                 console.error("[PageManager] 화면 로드 실패", error);
                 Common.ui.toast(error.message || "화면을 불러오지 못했습니다.", "error", { duration: 0 });
 
-                const fallback = state.user ? "home" : "login";
+                const fallback = state.user ? defaultPageCode() : "login";
                 if (pageCode !== fallback) {
                     await this.load(fallback, { replaceHash: true });
                 }
@@ -809,6 +817,9 @@
     const App = {
         navigate(pageCode, options = {}) {
             return PageManager.load(pageCode, options);
+        },
+        navigateDefault(options = {}) {
+            return PageManager.load(defaultPageCode(), options);
         },
         refreshPage() {
             return PageManager.refresh();
@@ -880,7 +891,7 @@
         document.getElementById("logoutButton")?.addEventListener("click", () => App.logout());
 
         window.addEventListener("popstate", (event) => {
-            const pageCode = routeFromHash() || (state.user ? "home" : "login");
+            const pageCode = routeFromHash() || (state.user ? defaultPageCode() : "login");
             const historyIndex = Number(event.state?.[HISTORY_INDEX_KEY]);
             PageManager.load(pageCode, {
                 fromHash: true,
@@ -917,7 +928,7 @@
         await refreshSession({ silent: true });
         const requested = routeFromHash();
         const initialPage = state.user && !requiresPasswordChange()
-            ? (requested && requested !== "login" ? requested : "home")
+            ? (requested && requested !== "login" ? requested : defaultPageCode())
             : "login";
 
         await PageManager.load(initialPage, {

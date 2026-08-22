@@ -6,22 +6,36 @@ from typing import Any
 
 COMMON_NAVIGATION = [
     {
+        "type": "group",
+        "key": "my-account",
+        "label": "내 계정",
+        "children": [
+            {
+                "type": "page",
+                "page": "account",
+                "label": "계정 정보",
+                "title": "내 계정",
+                "icon": "○",
+            },
+            {
+                "type": "page",
+                "page": "my-project-assignments",
+                "label": "프로젝트 투입현황",
+                "title": "개인별 프로젝트 투입현황",
+                "icon": "▤",
+            },
+        ],
+    },
+]
+
+ADMIN_NAVIGATION = [
+    {
         "type": "page",
         "page": "home",
         "label": "경영 현황",
         "title": "경영 현황",
         "icon": "⌂",
     },
-    {
-        "type": "page",
-        "page": "account",
-        "label": "내 계정",
-        "title": "내 계정",
-        "icon": "○",
-    },
-]
-
-ADMIN_NAVIGATION = [
     {
         "type": "group",
         "key": "business-planning",
@@ -94,8 +108,9 @@ ADMIN_NAVIGATION = [
     },
 ]
 
-COMMON_PAGE_CODES = ("home", "account")
+COMMON_PAGE_CODES = ("account", "my-project-assignments")
 ADMIN_PAGE_CODES = (
+    "home",
     "admin-users",
     "admin-projects",
     "workforce-management",
@@ -114,8 +129,8 @@ def portal_access_for_role(role_code: str) -> dict[str, Any]:
     page_codes = [*COMMON_PAGE_CODES]
     navigation = deepcopy(COMMON_NAVIGATION)
     if is_admin:
-        navigation.extend(deepcopy(ADMIN_NAVIGATION))
-        page_codes.extend(ADMIN_PAGE_CODES)
+        navigation = [*deepcopy(ADMIN_NAVIGATION), *navigation]
+        page_codes = [*ADMIN_PAGE_CODES, *page_codes]
     return {
         "navigation": navigation,
         "pageFiles": {
@@ -123,4 +138,3 @@ def portal_access_for_role(role_code: str) -> dict[str, Any]:
             "scriptPages": page_codes,
         },
     }
-

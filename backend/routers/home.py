@@ -15,6 +15,7 @@ from backend.auth_context import authenticate_request, require_admin_role
 from backend.database import get_db_connection
 from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
+from backend.routers.admin_users import _photo_thumbnail, _photo_version
 from backend.routers.planning_scenarios import load_scenario_detail
 
 
@@ -117,6 +118,47 @@ def _personal_assignment_payload(row) -> dict[str, Any]:
         "projectRoleName": row[14] or "",
         "primaryDuty": row[15] or "",
         "timelineStatusCode": row[16] or "COMPLETED",
+    }
+
+
+def _personal_project_detail_payload(row) -> dict[str, Any]:
+    return {
+        "projectId": int(row[0]),
+        "projectYear": int(row[1]),
+        "projectName": row[2],
+        "customerName": row[3] or "",
+        "projectStartDate": row[4],
+        "projectEndDate": row[5],
+        "participationTypeCode": row[6] or "",
+        "participationRate": _decimal_number(row[7]),
+        "orderDate": row[8],
+        "bidDate": row[9],
+        "statusCode": row[10] or "",
+        "description": row[11] or "",
+    }
+
+
+def _personal_project_worker_payload(row) -> dict[str, Any]:
+    return {
+        "assignmentId": int(row[0]),
+        "workerTypeCode": row[1] or "USER",
+        "employeeName": row[2] or "이름 미정",
+        "companyName": row[3] or "",
+        "departmentName": row[4] or "",
+        "positionName": row[5] or "",
+        "jobTitle": row[6] or "",
+        "assignmentStartDate": row[7],
+        "assignmentEndDate": row[8],
+        "assignmentStatusCode": row[9] or "CONFIRMED",
+        "allocationTypeCode": row[10] or "MONTHLY",
+        "defaultMm": _decimal_number(row[11]),
+        "totalMm": _decimal_number(row[12]),
+        "projectRoleName": row[13] or "",
+        "primaryDuty": row[14] or "",
+        "currentUserYn": row[15] or "N",
+        "userId": int(row[16]) if row[16] is not None else None,
+        "photoFileName": row[17] or "",
+        "photoUpdatedAt": row[18] or "",
     }
 
 
@@ -329,7 +371,6 @@ def my_dashboard(request: Request):
             {"userId": user_id, "limit": 100},
         )
         assignments = [_personal_assignment_payload(row) for row in cursor.fetchall()]
-        notices = _load_notices(cursor)
 
         current_month = datetime.now().strftime("%Y-%m")
         current_year = current_month[:4]
@@ -373,7 +414,6 @@ def my_dashboard(request: Request):
                     for month, mm in monthly_mm.items()
                 ],
                 "assignments": assignments,
-                "notices": notices,
             },
         }
     except HTTPException:
@@ -387,6 +427,138 @@ def my_dashboard(request: Request):
                 "프로젝트 투입 스키마가 설치되지 않았습니다. "
                 "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
             ),
+            unavailable_detail="시스템 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/my-projects/{project_id}")
+def my_project_detail(project_id: int, request: Request):
+    user = authenticate_request(request)
+    user_id = int(user["userId"])
+    params = {"projectId": project_id, "userId": user_id}
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(SqlLoader.get_sql("HOME_PERSONAL_PROJECT_DETAIL"), params)
+        project_row = cursor.fetchone()
+        if not project_row:
+            raise HTTPException(
+                status_code=404,
+                detail="본인이 투입된 프로젝트를 찾을 수 없습니다.",
+            )
+
+        cursor.execute(SqlLoader.get_sql("HOME_PERSONAL_PROJECT_WORKFORCE"), params)
+        workforce = [
+            _personal_project_worker_payload(row)
+            for row in cursor.fetchall()
+        ]
+        return {
+            "status": "success",
+            "data": {
+                "project": _personal_project_detail_payload(project_row),
+                "workforce": workforce,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Personal project detail query failed. user_id=%s project_id=%s",
+            user_id,
+            project_id,
+        )
+        raise_database_http_error(
+            exc,
+            default_detail="프로젝트 상세정보를 불러오지 못했습니다.",
+            schema_detail=(
+                "프로젝트 투입 스키마가 설치되지 않았습니다. "
+                "database/INIT_SYSTEM_ALT.sql을 적용한 뒤 다시 시도해 주세요."
+            ),
+            unavailable_detail="시스템 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/my-projects/{project_id}/users/{photo_user_id}/photo")
+def my_project_user_photo(
+    project_id: int,
+    photo_user_id: int,
+    request: Request,
+    v: str = Query(default="", max_length=100),
+):
+    user = authenticate_request(request)
+    viewer_user_id = int(user["userId"])
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            SqlLoader.get_sql("HOME_PERSONAL_PROJECT_USER_PHOTO"),
+            {
+                "projectId": project_id,
+                "photoUserId": photo_user_id,
+                "viewerUserId": viewer_user_id,
+            },
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="프로필 사진을 찾을 수 없습니다.")
+
+        file_data = _serialize(row[1]) or b""
+        if isinstance(file_data, str):
+            file_data = file_data.encode("utf-8")
+        media_type = row[0] or "application/octet-stream"
+        try:
+            file_data = _photo_thumbnail(
+                photo_user_id,
+                _photo_version(row[2]),
+                file_data,
+            )
+            media_type = "image/jpeg"
+        except Exception:
+            logger.warning(
+                "Personal project photo thumbnail generation failed. project_id=%s photo_user_id=%s",
+                project_id,
+                photo_user_id,
+                exc_info=True,
+            )
+        return Response(
+            content=file_data,
+            media_type=media_type,
+            headers={
+                "Cache-Control": (
+                    "private, max-age=31536000, immutable"
+                    if v
+                    else "private, no-cache"
+                ),
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; sandbox",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Personal project photo query failed. viewer_user_id=%s project_id=%s photo_user_id=%s",
+            viewer_user_id,
+            project_id,
+            photo_user_id,
+        )
+        raise_database_http_error(
+            exc,
+            default_detail="프로필 사진을 불러오지 못했습니다.",
             unavailable_detail="시스템 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
         )
     finally:

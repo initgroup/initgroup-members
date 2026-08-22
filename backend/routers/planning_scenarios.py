@@ -247,44 +247,43 @@ def _actual_data_quality_warning(
     }
 
 
-def _actual_capacity(
-    cursor,
+def actual_capacity_from_assignments(
+    assignments: list[dict[str, Any]],
     plan_year: int,
 ) -> tuple[
     dict[tuple[str, str], Decimal],
     dict[str, str],
     list[dict[str, Any]],
 ]:
-    cursor.execute(
-        SqlLoader.get_sql("PLANNING_REFERENCE_ACTUAL_ASSIGNMENTS"),
-        {"planYear": plan_year},
-    )
     capacity: dict[tuple[str, str], Decimal] = defaultdict(lambda: Decimal("0"))
     worker_names: dict[str, str] = {}
     data_quality_warnings: list[dict[str, Any]] = []
-    for (
-        assignment_id,
-        user_id,
-        company_employee_id,
-        employee_name,
-        raw_allocations,
-    ) in cursor.fetchall():
-        assignment_id = int(assignment_id)
+    for item in assignments:
+        assignment_id = int(item["assignmentId"])
+        user_id = item.get("userId")
+        company_employee_id = item.get("companyEmployeeId")
+        employee_name = item.get("employeeName")
         worker_key = _worker_key(user_id, company_employee_id)
         employee_name = str(employee_name or worker_key)
         worker_names[worker_key] = employee_name
-        if hasattr(raw_allocations, "read"):
-            raw_allocations = raw_allocations.read()
         reason_code = ""
-        if raw_allocations is None or not str(raw_allocations).strip():
-            allocations = None
-            reason_code = "MISSING_ALLOCATION_JSON"
-        else:
-            try:
-                allocations = json.loads(raw_allocations)
-            except (TypeError, ValueError):
-                allocations = None
+        if "monthlyAllocations" in item:
+            allocations = item.get("monthlyAllocations")
+            if item.get("allocationDataQualityError"):
                 reason_code = "INVALID_JSON"
+        else:
+            raw_allocations = item.get("monthlyAllocationJson")
+            if hasattr(raw_allocations, "read"):
+                raw_allocations = raw_allocations.read()
+            if raw_allocations is None or not str(raw_allocations).strip():
+                allocations = None
+                reason_code = "MISSING_ALLOCATION_JSON"
+            else:
+                try:
+                    allocations = json.loads(raw_allocations)
+                except (TypeError, ValueError):
+                    allocations = None
+                    reason_code = "INVALID_JSON"
 
         if not reason_code and (not isinstance(allocations, list) or not allocations):
             reason_code = "INVALID_SHAPE"
@@ -346,7 +345,30 @@ def _actual_capacity(
     return capacity, worker_names, data_quality_warnings
 
 
-def _load_scenario_detail_once(cursor, scenario_id: int) -> dict[str, Any]:
+def _actual_capacity(
+    cursor,
+    plan_year: int,
+) -> tuple[
+    dict[tuple[str, str], Decimal],
+    dict[str, str],
+    list[dict[str, Any]],
+]:
+    cursor.execute(
+        SqlLoader.get_sql("PLANNING_REFERENCE_ACTUAL_ASSIGNMENTS"),
+        {"planYear": plan_year},
+    )
+    return actual_capacity_from_assignments(_rows(cursor), plan_year)
+
+
+def _load_scenario_detail_once(
+    cursor,
+    scenario_id: int,
+    actual_capacity_seed: tuple[
+        dict[tuple[str, str], Decimal],
+        dict[str, str],
+        list[dict[str, Any]],
+    ] | None = None,
+) -> dict[str, Any]:
     cursor.execute(
         SqlLoader.get_sql("PLANNING_SCENARIO_DETAIL"),
         {"scenarioId": scenario_id},
@@ -355,10 +377,16 @@ def _load_scenario_detail_once(cursor, scenario_id: int) -> dict[str, Any]:
     if not scenario:
         raise HTTPException(status_code=404, detail="계획안을 찾을 수 없습니다.")
 
-    capacity, worker_names, data_quality_warnings = _actual_capacity(
-        cursor,
-        int(scenario["planYear"]),
-    )
+    if actual_capacity_seed is None:
+        capacity, worker_names, data_quality_warnings = _actual_capacity(
+            cursor,
+            int(scenario["planYear"]),
+        )
+    else:
+        seed_capacity, seed_worker_names, seed_warnings = actual_capacity_seed
+        capacity = defaultdict(lambda: Decimal("0"), seed_capacity)
+        worker_names = dict(seed_worker_names)
+        data_quality_warnings = list(seed_warnings)
 
     cursor.execute(
         SqlLoader.get_sql("PLANNING_SCENARIO_PROJECT_LIST"),
@@ -510,10 +538,22 @@ def _load_scenario_detail_once(cursor, scenario_id: int) -> dict[str, Any]:
     return scenario
 
 
-def load_scenario_detail(cursor, scenario_id: int) -> dict[str, Any]:
+def load_scenario_detail(
+    cursor,
+    scenario_id: int,
+    actual_capacity_seed: tuple[
+        dict[tuple[str, str], Decimal],
+        dict[str, str],
+        list[dict[str, Any]],
+    ] | None = None,
+) -> dict[str, Any]:
     for _attempt in range(3):
         try:
-            return _load_scenario_detail_once(cursor, scenario_id)
+            return _load_scenario_detail_once(
+                cursor,
+                scenario_id,
+                actual_capacity_seed,
+            )
         except _ScenarioReadConflict:
             continue
     raise HTTPException(

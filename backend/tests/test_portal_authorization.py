@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -68,8 +67,17 @@ class PortalAccessTests(unittest.TestCase):
         access = portal_access_for_role("USER")
         serialized = repr(access)
 
-        self.assertEqual(["home", "account"], [item["page"] for item in access["navigation"]])
-        self.assertEqual(["home", "account"], access["pageFiles"]["htmlPages"])
+        self.assertEqual(["my-account"], [item["key"] for item in access["navigation"]])
+        account_group = access["navigation"][0]
+        self.assertEqual(
+            ["account", "my-project-assignments"],
+            [item["page"] for item in account_group["children"]],
+        )
+        self.assertEqual(
+            ["account", "my-project-assignments"],
+            access["pageFiles"]["htmlPages"],
+        )
+        self.assertNotIn("home", access["pageFiles"]["htmlPages"])
         self.assertNotIn("admin-users", serialized)
         self.assertNotIn("business-planning", serialized)
 
@@ -77,7 +85,11 @@ class PortalAccessTests(unittest.TestCase):
         access = portal_access_for_role("ADMIN")
         group_keys = [item.get("key") for item in access["navigation"] if item["type"] == "group"]
 
+        self.assertEqual("home", access["navigation"][0]["page"])
         self.assertIn("business-planning", group_keys)
+        self.assertIn("my-account", group_keys)
+        self.assertIn("home", access["pageFiles"]["htmlPages"])
+        self.assertIn("my-project-assignments", access["pageFiles"]["htmlPages"])
         self.assertIn("admin-users", access["pageFiles"]["htmlPages"])
 
     def test_session_access_is_derived_from_authenticated_server_role(self):
@@ -90,7 +102,10 @@ class PortalAccessTests(unittest.TestCase):
             result = auth.get_session(request)
 
         self.assertEqual("USER", result["user"]["roleCode"])
-        self.assertEqual(["home", "account"], result["portalAccess"]["pageFiles"]["htmlPages"])
+        self.assertEqual(
+            ["account", "my-project-assignments"],
+            result["portalAccess"]["pageFiles"]["htmlPages"],
+        )
 
 
 class RoleEnforcementTests(unittest.TestCase):
@@ -180,15 +195,41 @@ class RoleEnforcementTests(unittest.TestCase):
 
         self.assertEqual(403, response.status_code)
 
-    def test_server_selects_personal_home_template_for_user_role(self):
+    def test_user_is_blocked_from_workforce_bootstrap_url(self):
+        async def call_next(_request):
+            return JSONResponse({"unexpected": True})
+
         with patch.object(
             main,
             "authenticate_request",
-            return_value={"userId": 9, "roleCode": "USER"},
+            return_value={"userId": 9, "roleCode": "USER", "passwordChangeYn": "Y"},
         ):
-            response = main.role_specific_home(SimpleNamespace())
+            response = asyncio.run(
+                main.enforce_api_authentication(
+                    _request("/api/workforce-management/bootstrap"),
+                    call_next,
+                )
+            )
 
-        self.assertEqual("home-user.html", Path(response.path).name)
+        self.assertEqual(403, response.status_code)
+
+    def test_user_is_blocked_from_executive_home_asset(self):
+        async def call_next(_request):
+            return JSONResponse({"unexpected": True})
+
+        with patch.object(
+            main,
+            "authenticate_request",
+            return_value={"userId": 9, "roleCode": "USER", "passwordChangeYn": "Y"},
+        ):
+            response = asyncio.run(
+                main.enforce_api_authentication(
+                    _request("/pages/home.html"),
+                    call_next,
+                )
+            )
+
+        self.assertEqual(403, response.status_code)
 
 
 class PersonalDashboardTests(unittest.TestCase):

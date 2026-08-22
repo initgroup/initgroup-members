@@ -4,6 +4,11 @@ import hashlib
 import logging
 import os
 import secrets
+import time
+from collections import OrderedDict
+from dataclasses import dataclass
+from datetime import datetime
+from threading import Lock
 from typing import Any, Optional
 
 from fastapi import HTTPException, Request, Response
@@ -15,10 +20,100 @@ from backend.database_helper import SqlLoader
 
 logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = os.getenv("INIT_SESSION_COOKIE_NAME", "init_session")
+_SESSION_CACHE_MAX_SIZE = 4096
+_session_cache_lock = Lock()
+_session_cache: OrderedDict[str, "_SessionCacheEntry"] = OrderedDict()
+_session_verify_locks: dict[str, Lock] = {}
 SqlLoader.register_bind_contract(
     "AUTH_SESSION_TOUCH",
     {"sessionTokenHash", "ttlSeconds"},
 )
+
+
+@dataclass
+class _SessionCacheEntry:
+    user: dict[str, Any]
+    verified_until: float
+    next_touch_at: float
+
+
+def get_session_verify_cache_seconds() -> int:
+    try:
+        configured = int(os.getenv("INIT_SESSION_VERIFY_CACHE_SECONDS", "15"))
+    except (TypeError, ValueError):
+        configured = 15
+    return max(0, min(configured, 60))
+
+
+def get_session_touch_interval_seconds() -> int:
+    try:
+        configured = int(os.getenv("INIT_SESSION_TOUCH_INTERVAL_SECONDS", "600"))
+    except (TypeError, ValueError):
+        configured = 600
+    return max(0, min(configured, get_session_ttl_seconds()))
+
+
+def _cached_session(token_hash: str, *, touch: bool, now: float) -> dict[str, Any] | None:
+    with _session_cache_lock:
+        entry = _session_cache.get(token_hash)
+        if not entry or now >= entry.verified_until:
+            return None
+        if touch and now >= entry.next_touch_at:
+            return None
+        _session_cache.move_to_end(token_hash)
+        return dict(entry.user)
+
+
+def _session_verify_lock(token_hash: str) -> Lock:
+    with _session_cache_lock:
+        lock = _session_verify_locks.get(token_hash)
+        if lock is None:
+            lock = Lock()
+            _session_verify_locks[token_hash] = lock
+        return lock
+
+
+def _store_cached_session(
+    token_hash: str,
+    user: dict[str, Any],
+    *,
+    verified_until: float,
+    next_touch_at: float,
+) -> None:
+    with _session_cache_lock:
+        _session_cache[token_hash] = _SessionCacheEntry(
+            user=dict(user),
+            verified_until=verified_until,
+            next_touch_at=next_touch_at,
+        )
+        _session_cache.move_to_end(token_hash)
+        while len(_session_cache) > _SESSION_CACHE_MAX_SIZE:
+            expired_token_hash, _ = _session_cache.popitem(last=False)
+            _session_verify_locks.pop(expired_token_hash, None)
+
+
+def invalidate_session_cache(token_hash: str) -> None:
+    with _session_cache_lock:
+        _session_cache.pop(str(token_hash or ""), None)
+
+
+def invalidate_user_session_cache(user_id: int) -> None:
+    target_user_id = int(user_id)
+    with _session_cache_lock:
+        stale_hashes = [
+            token_hash
+            for token_hash, entry in _session_cache.items()
+            if int(entry.user.get("userId") or 0) == target_user_id
+        ]
+        for token_hash in stale_hashes:
+            _session_cache.pop(token_hash, None)
+
+
+def _remaining_session_seconds(expires_at: Any) -> float:
+    if not isinstance(expires_at, datetime):
+        return float(get_session_ttl_seconds())
+    now = datetime.now(tz=expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
+    return max(0.0, (expires_at - now).total_seconds())
 
 
 def get_session_ttl_seconds() -> int:
@@ -132,6 +227,8 @@ def revoke_current_session(request: Request, response: Optional[Response] = None
     if not token:
         return
 
+    token_hash = _hash_session_token(token)
+    invalidate_session_cache(token_hash)
     conn = None
     cursor = None
     try:
@@ -141,7 +238,7 @@ def revoke_current_session(request: Request, response: Optional[Response] = None
         cursor = conn.cursor()
         cursor.execute(
             SqlLoader.get_sql("AUTH_SESSION_REVOKE"),
-            {"sessionTokenHash": _hash_session_token(token)},
+            {"sessionTokenHash": token_hash},
         )
         conn.commit()
     except Exception:
@@ -175,51 +272,96 @@ def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, A
     if not token:
         raise HTTPException(status_code=401, detail="로그인 세션이 필요합니다.")
 
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        if hasattr(conn, "call_timeout"):
-            conn.call_timeout = get_auth_query_timeout_ms()
-        cursor = conn.cursor()
-        token_hash = _hash_session_token(token)
-        cursor.execute(
-            SqlLoader.get_sql("AUTH_SESSION_SELECT"),
-            {"sessionTokenHash": token_hash},
-        )
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=401, detail="로그인 세션이 만료되었거나 유효하지 않습니다.")
-        user = _row_to_user(row)
-        if touch:
-            cursor.execute(
-                SqlLoader.get_sql("AUTH_SESSION_TOUCH"),
-                {
-                    "sessionTokenHash": token_hash,
-                    "ttlSeconds": get_session_ttl_seconds(),
-                },
-            )
-            conn.commit()
+    token_hash = _hash_session_token(token)
+    now = time.monotonic()
+    user = _cached_session(token_hash, touch=touch, now=now)
+    if user:
+        request.state.auth_session_touched = False
         request.state.auth_user = user
         return user
-    except HTTPException:
-        if conn:
-            conn.rollback()
-        raise
-    except Exception as exc:
-        if conn:
-            conn.rollback()
-        logger.exception("Login session verification failed.")
-        raise_database_http_error(
-            exc,
-            default_detail="로그인 세션을 확인하지 못했습니다.",
-            unavailable_detail="로그인 세션을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
-        )
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+
+    verify_lock = _session_verify_lock(token_hash)
+    with verify_lock:
+        now = time.monotonic()
+        user = _cached_session(token_hash, touch=touch, now=now)
+        if user:
+            request.state.auth_session_touched = False
+            request.state.auth_user = user
+            return user
+
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            if hasattr(conn, "call_timeout"):
+                conn.call_timeout = get_auth_query_timeout_ms()
+            cursor = conn.cursor()
+            cursor.execute(
+                SqlLoader.get_sql("AUTH_SESSION_SELECT"),
+                {"sessionTokenHash": token_hash},
+            )
+            row = cursor.fetchone()
+            if not row:
+                invalidate_session_cache(token_hash)
+                raise HTTPException(status_code=401, detail="로그인 세션이 만료되었거나 유효하지 않습니다.")
+            user = _row_to_user(row)
+            with _session_cache_lock:
+                previous = _session_cache.get(token_hash)
+            touch_interval = get_session_touch_interval_seconds()
+            should_touch = touch and (
+                previous is None
+                or touch_interval == 0
+                or now >= previous.next_touch_at
+            )
+            if should_touch:
+                cursor.execute(
+                    SqlLoader.get_sql("AUTH_SESSION_TOUCH"),
+                    {
+                        "sessionTokenHash": token_hash,
+                        "ttlSeconds": get_session_ttl_seconds(),
+                    },
+                )
+                conn.commit()
+                remaining_seconds = float(get_session_ttl_seconds())
+                next_touch_at = now + touch_interval
+            else:
+                remaining_seconds = _remaining_session_seconds(row[6])
+                next_touch_at = (
+                    previous.next_touch_at
+                    if previous is not None
+                    else now
+                )
+            verify_seconds = min(
+                float(get_session_verify_cache_seconds()),
+                remaining_seconds,
+            )
+            _store_cached_session(
+                token_hash,
+                user,
+                verified_until=now + verify_seconds,
+                next_touch_at=next_touch_at,
+            )
+            request.state.auth_session_touched = should_touch
+            request.state.auth_user = user
+            return user
+        except HTTPException:
+            if conn:
+                conn.rollback()
+            raise
+        except Exception as exc:
+            if conn:
+                conn.rollback()
+            logger.exception("Login session verification failed.")
+            raise_database_http_error(
+                exc,
+                default_detail="로그인 세션을 확인하지 못했습니다.",
+                unavailable_detail="로그인 세션을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            )
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
 
 def get_request_user_id(request: Request) -> int:
