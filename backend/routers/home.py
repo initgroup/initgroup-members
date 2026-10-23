@@ -238,7 +238,7 @@ def dashboard(
     planYear: int | None = Query(default=None, ge=1900, le=2100),
 ):
     user = authenticate_request(request)
-    plan_year = planYear or (datetime.now().year + 1)
+    plan_year = planYear or datetime.now().year
     conn = None
     cursor = None
     try:

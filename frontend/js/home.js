@@ -149,7 +149,7 @@
         const chart = query("#homeMonthlyPlan");
         Common.dom.clear(chart);
         if (!scenario) {
-            chart.appendChild(emptyState(`${planYear}년 계획안을 만들면 월별 예상 손익이 표시됩니다.`));
+            chart.appendChild(emptyState(`${planYear}년 계획안에 사업과 인력 배치를 저장하면 월별 예상 손익이 표시됩니다.`));
             return;
         }
         const rows = monthlyPlan(scenario, planYear);
@@ -288,6 +288,7 @@
         const scenario = data.scenario || null;
         const scenarioSummary = scenario?.summary || {};
         const projects = scenario?.projects || [];
+        const hasPlannedProjects = projects.length > 0;
         const weightedAward = projects.reduce((sum, project) => {
             if (String(project.bidDecisionCode || "").toUpperCase() === "SKIP") return sum;
             const probability = BigInt(Math.round(Number(project.winProbability || 0) * 100));
@@ -296,40 +297,63 @@
         const shortageCount = (scenario?.warnings || [])
             .filter((warning) => warning.type === "UNDERSTAFFED")
             .reduce((sum, warning) => sum + Number(warning.shortageHeadcount || 0), 0);
-        const sales = scenario ? scenarioSummary.totalSalesAmount : projectSummary.contractAmountVat;
-        const profit = scenario ? scenarioSummary.operatingProfit : 0;
+        const sales = hasPlannedProjects ? scenarioSummary.totalSalesAmount : projectSummary.contractAmountVat;
+        const profit = hasPlannedProjects ? scenarioSummary.operatingProfit : 0;
         const workforce = data.workforce || {};
         const availableWorkforce = Number(workforce.internalCount || 0)
             + Number(workforce.partnerCount || 0);
 
         query("#homeBidTargetCount").textContent = formattedNumber(projectSummary.bidTargetCount || 0);
         query("#homeProjectCountDetail").textContent = `등록 사업 ${formattedNumber(projectSummary.projectCount || 0)}건 · 수주 ${formattedNumber(projectSummary.awardedCount || 0)}건`;
-        query("#homeWeightedAward").textContent = money(scenario ? weightedAward : projectSummary.contractAmountVat);
-        query("#homeAwardDetail").textContent = scenario ? "수주 확률을 반영한 계획값" : "계획안 없음 · 현재 수주액";
+        query("#homeAwardLabel").textContent = hasPlannedProjects ? "가중 예상수주" : "등록 수주액";
+        query("#homeWeightedAward").textContent = money(hasPlannedProjects ? weightedAward : projectSummary.contractAmountVat);
+        query("#homeAwardDetail").textContent = hasPlannedProjects ? "수주 확률을 반영한 계획값" : "선택 연도의 프로젝트 수주액";
+        query("#homeSalesLabel").textContent = hasPlannedProjects ? "계획 매출" : "등록 계약금액";
         query("#homePlannedSales").textContent = money(sales);
-        query("#homeSalesDetail").textContent = scenario ? "월별 인력 매출단가 합계" : "현재 프로젝트 수주액";
-        query("#homeOperatingProfit").textContent = money(profit);
-        query("#homeProfitRate").textContent = `이익률 ${profitRate(profit, sales).toFixed(1)}%`;
-        query("#homeAssignmentCount").textContent = formattedNumber(scenarioSummary.assignmentCount || 0);
-        query("#homeShortageCount").textContent = formattedNumber(shortageCount);
+        query("#homeSalesDetail").textContent = hasPlannedProjects ? "월별 인력 매출단가 합계" : "계획 사업 미등록 · 프로젝트 계약금액 기준";
+        query("#homeOperatingProfit").textContent = hasPlannedProjects ? money(profit) : "—";
+        query("#homeProfitRate").textContent = hasPlannedProjects ? `이익률 ${profitRate(profit, sales).toFixed(1)}%` : "계획 사업·인력 배치 저장 후 계산";
+        query("#homeAssignmentCount").textContent = hasPlannedProjects ? formattedNumber(scenarioSummary.assignmentCount || 0) : "—";
+        query("#homeShortageCount").textContent = hasPlannedProjects ? formattedNumber(shortageCount) : "—";
         query("#homeWorkforceDetail").textContent = `가용 등록인력 ${formattedNumber(availableWorkforce)}명`;
         query("#homeScenarioBadge").textContent = scenario
-            ? `${scenario.scenarioName} · ${scenario.statusCode === "DRAFT" ? "임시안" : "확정안"}`
+            ? `${scenario.scenarioName} · ${hasPlannedProjects ? (scenario.statusCode === "DRAFT" ? "임시안" : "확정안") : "계획 사업 미등록"}`
             : `${data.planYear}년 계획안 없음`;
-        query("#homeScenarioBadge").classList.toggle("is-empty", !scenario);
+        query("#homeScenarioBadge").classList.toggle("is-empty", !hasPlannedProjects);
         query("#homeUpdatedAt").textContent = `${new Intl.DateTimeFormat("ko-KR", {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit"
         }).format(new Date(data.generatedAt || Date.now()))} 기준`;
 
-        renderMonthlyPlan(scenario, Number(data.planYear));
+        renderMonthlyPlan(hasPlannedProjects ? scenario : null, Number(data.planYear));
         renderRisks(scenario);
         renderDecisions(data.decisionProjects);
         renderWorkforce(workforce, data.companySchemaAvailable !== false);
         renderSchemaWarnings(data.schemaWarnings);
         renderNotices(data.notices);
         query("#homeOpenPlanningButton").disabled = data.planningSchemaAvailable === false;
+    }
+
+    function renderDashboardError() {
+        [
+            "#homeBidTargetCount", "#homeWeightedAward", "#homePlannedSales",
+            "#homeOperatingProfit", "#homeAssignmentCount", "#homeShortageCount",
+            "#homeRiskCount", "#homeDecisionCount", "#homeWorkforceTotal", "#homeNoticeSummary"
+        ].forEach((selector) => { query(selector).textContent = "—"; });
+        [
+            "#homeProjectCountDetail", "#homeAwardDetail", "#homeSalesDetail",
+            "#homeProfitRate", "#homeWorkforceDetail", "#homeScenarioBadge", "#homeUpdatedAt"
+        ].forEach((selector) => { query(selector).textContent = "조회 실패"; });
+        [
+            "#homeMonthlyPlan", "#homeRiskList", "#homeDecisionList",
+            "#homeWorkforceComposition", "#homeNoticeList"
+        ].forEach((selector) => {
+            const container = query(selector);
+            Common.dom.clear(container);
+            container.appendChild(emptyState("데이터를 불러오지 못했습니다. 새로고침해 주세요.", selector === "#homeRiskList" ? "li" : "div"));
+        });
+        renderSchemaWarnings([]);
     }
 
     async function loadDashboard() {
@@ -348,15 +372,7 @@
             Common.ui.setInlineStatus(status, "");
         } catch (error) {
             if (error?.name === "AbortError" || requestId !== dashboardRequestId) return;
-            renderDashboard({
-                planYear,
-                generatedAt: Date.now(),
-                projectSummary: {},
-                workforce: {},
-                decisionProjects: [],
-                schemaWarnings: [],
-                notices: []
-            });
+            renderDashboardError();
             Common.ui.setInlineStatus(status, error.message || "경영 현황을 불러오지 못했습니다.", "error");
         }
     }
@@ -370,7 +386,7 @@
             option.textContent = `${year}년`;
             select.appendChild(option);
         }
-        select.value = String(currentYear + 1);
+        select.value = String(currentYear);
     }
 
     window.Pages.home = {
@@ -389,7 +405,9 @@
             await loadDashboard();
         },
 
-        activate() {},
+        async activate() {
+            if (root) await loadDashboard();
+        },
 
         destroy() {
             dashboardRequestId += 1;
