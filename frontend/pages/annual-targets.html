@@ -1,0 +1,70 @@
+<section class="page annual-targets" id="page-annual-targets" aria-labelledby="annualTargetsTitle">
+    <header class="page-header">
+        <div><p class="page-kicker">ANNUAL TARGETS &amp; PERFORMANCE</p><h2 id="annualTargetsTitle">연간 목표·실적</h2><p id="annualTargetsIntroduction">직원별 연간 목표를 입력하면 사업부·회사 목표가 자동 합산됩니다. 필요한 추가목표만 별도로 더하세요.</p></div>
+        <div class="annual-targets-actions"><label class="field"><span>기준연도</span><input id="annualTargetsYear" class="input" type="number" min="1900" max="2100"></label><button id="annualTargetsRefresh" class="button button-secondary" type="button">조회</button></div>
+    </header>
+    <p id="annualTargetsStatus" class="inline-status" aria-live="polite"></p>
+    <p id="annualTargetsWarnings" class="annual-targets-notice" hidden></p>
+    <section id="annualTargetsKpis" class="annual-targets-kpis" aria-label="저장된 회사 연간 목표와 실적"></section>
+    <p id="annualTargetsSavedBreakdown" class="annual-targets-saved-breakdown"></p>
+    <nav class="annual-targets-actions annual-targets-report-controls" aria-label="연간 목표 화면 바로가기">
+        <button id="annualTargetsHistoricalJump" class="button button-secondary" type="button" data-annual-targets-jump="annualTargetsHistoricalForm">과거 총액 소급</button>
+        <button class="button button-secondary" type="button" data-annual-targets-jump="annualTargetsStaffForm">직원 연간 목표</button>
+        <button class="button button-secondary" type="button" data-annual-targets-jump="annualTargetsDeptForm">사업부 추가목표</button>
+        <button class="button button-secondary" type="button" data-annual-targets-jump="annualTargetsCompanyForm">회사 추가목표</button>
+        <button class="button button-secondary" type="button" data-annual-targets-jump="annualTargetsExpenseForm">회사 기타비용</button>
+        <button class="button button-secondary" type="button" data-annual-targets-jump="annualTargetsReports">연간 실적 비교</button>
+    </nav>
+    <form class="panel" id="annualTargetsHistoricalForm" aria-labelledby="annualTargetsHistoricalTitle">
+        <div class="panel-header"><div><h3 id="annualTargetsHistoricalTitle">과거 연간 총액 소급</h3><p>상세 프로젝트 매출을 알 수 없는 과거 연도의 회사 총액입니다. 매출은 VAT 포함이며 목표·순이익은 모르면 비워 두세요. 순이익은 원가를 역산하지 않습니다.</p></div><button id="annualTargetsHistoricalSave" class="button button-primary" type="submit">과거 총액 저장</button></div>
+        <div class="annual-targets-actions">
+            <label class="field"><span>연간 목표 총액 (선택)</span><input id="annualTargetsHistoricalTarget" class="input" type="text" inputmode="numeric" placeholder="모르면 비워 두세요"></label>
+            <label class="field"><span class="required">연간 매출 총액 (원 · VAT 포함)</span><input id="annualTargetsHistoricalSales" class="input" type="text" inputmode="numeric" required></label>
+            <label class="field"><span>연간 순이익 총액 (선택 · 손실은 음수)</span><input id="annualTargetsHistoricalProfit" class="input" type="text" inputmode="text" placeholder="예: -10,000,000"></label>
+            <label class="field annual-targets-note-field"><span>근거·메모</span><input id="annualTargetsHistoricalNote" class="input" type="text" maxlength="2000" placeholder="예: 2024년 결산 요약표"></label>
+        </div>
+        <p id="annualTargetsHistoricalStatus" class="inline-status" aria-live="polite"></p>
+        <button id="annualTargetsHistoricalDisable" class="button button-secondary" type="button" hidden>총액 적용 해제</button>
+        <p>프로젝트 매출과 중복 합산하지 않습니다. 나중에 상세 자료를 등록하려면 총액 적용을 해제하세요. 마감한 연도는 수정하지 않습니다.</p>
+    </form>
+    <form class="panel" id="annualTargetsStaffForm">
+        <div class="panel-header"><div><h3>직원 연간 목표</h3><p>직원별로 1년 목표금액을 한 번 입력합니다. 계약직·외부인력은 실적만 반영합니다.</p></div><button id="annualTargetsStaffSave" class="button button-primary" type="submit">직원 목표 저장</button></div>
+        <div class="annual-targets-actions"><label class="field"><span>사업부 필터</span><select id="annualTargetsStaffDepartment" class="select"><option value="all">전체 사업부</option></select></label><label class="field"><span>직원 검색</span><input id="annualTargetsStaffSearch" class="input" type="search" placeholder="직원 이름"></label><strong id="annualTargetsStaffTotal"></strong></div>
+        <p id="annualTargetsStaffStatus" class="inline-status" aria-live="polite"></p>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>직원</th><th>목표 귀속 사업부</th><th>고용구분</th><th>연간 목표금액 (원)</th></tr></thead><tbody id="annualTargetsEditor"></tbody></table></div>
+        <p>저장한 목표의 귀속 사업부는 이후 인사이동으로 자동 변경하지 않습니다.</p>
+    </form>
+    <form class="panel" id="annualTargetsDeptForm">
+        <div class="panel-header"><div><h3>사업부 추가목표 <small>선택 입력</small></h3><p>직원 목표 합계에 더할 사업부의 연간 추가목표만 입력합니다. 추가목표가 없으면 0원으로 두세요.</p></div><button id="annualTargetsDeptSave" class="button button-primary" type="submit">사업부 추가목표 저장</button></div>
+        <p id="annualTargetsDeptStatus" class="inline-status" aria-live="polite"></p>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>사업부</th><th>직원 연간 목표 합계</th><th>연간 추가목표 (원)</th><th>사업부 연간 목표</th><th>추가목표 메모</th></tr></thead><tbody id="annualTargetsBudgetEditor"></tbody></table></div>
+    </form>
+    <form class="panel" id="annualTargetsCompanyForm">
+        <div class="panel-header"><div><h3>회사 추가목표 <small>선택 입력</small></h3><p>사업부 목표 합계에 더할 회사의 연간 추가목표만 입력합니다.</p></div><button id="annualTargetsCompanySave" class="button button-primary" type="submit">회사 추가목표 저장</button></div>
+        <div class="annual-targets-actions"><label class="field"><span>연간 회사 추가목표 (원)</span><input id="annualTargetsCompanyAmount" class="input" inputmode="numeric" type="text" placeholder="0"></label><label class="field annual-targets-note-field"><span>추가목표 메모</span><input id="annualTargetsCompanyNote" class="input" type="text" maxlength="1000" placeholder="추가목표의 근거"></label></div>
+        <p id="annualTargetsCompanyStatus" class="inline-status" aria-live="polite"></p>
+        <div class="annual-targets-preview" aria-live="polite"><span>입력 기준 · 사업부 합계 <strong id="annualTargetsCompanyBase"></strong></span><span>회사 연간 목표 <strong id="annualTargetsCompanyGoal"></strong></span></div>
+        <p>회사 목표 = 직원 목표 합계 + 사업부 추가목표 합계 + 회사 추가목표. 각 영역의 저장 버튼으로 변경사항을 반영합니다.</p>
+    </form>
+    <form class="panel" id="annualTargetsExpenseForm">
+        <div class="panel-header"><div><h3>회사 연간 기타비용</h3><p>경비·간접비 등 회사 전체의 연간 비용을 한 번 입력합니다. 인력원가에 포함된 비용은 중복 입력하지 마세요.</p></div><button id="annualTargetsExpenseSave" class="button button-primary" type="submit">연간 비용 저장</button></div>
+        <p id="annualTargetsExpenseStatus" class="inline-status" aria-live="polite"></p>
+        <div class="annual-targets-actions"><label class="field"><span>회사 연간 기타비용 (원)</span><input id="annualTargetsExpenseAmount" class="input" inputmode="numeric" type="text" placeholder="0"></label><label class="field annual-targets-note-field"><span>비용 내역</span><input id="annualTargetsExpenseNote" class="input" type="text" maxlength="1000" placeholder="연간 경비·간접비 등"></label></div>
+        <p>입력 기준 연간 관리 순이익 <strong id="annualTargetsExpenseProfit"></strong></p>
+    </form>
+    <div class="annual-targets-actions annual-targets-report-controls" id="annualTargetsReports"><strong>연간 목표·실적 비교</strong><span id="annualTargetsReportDescription">아래 실적은 저장된 연간 목표·비용과 해당 연도 투입원장을 기준으로 계산합니다.</span></div>
+    <section class="panel">
+        <div class="panel-header"><div><h3>사업부 목표 대비 실적</h3><p>사업부 매출은 프로젝트 연간 매출을 해당 연도 소속 이력과 투입 M/M 비중으로 귀속합니다. 인력이 없으면 담당 사업부로 귀속합니다. 회사 기타비용은 배분하지 않습니다.</p></div></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>사업부</th><th>직원 목표</th><th>추가목표</th><th>합계 목표</th><th>직원 귀속매출</th><th>계약직·외부 귀속매출</th><th>인력 미배분 매출</th><th>합계 매출</th><th>달성률</th><th>인력원가</th><th>투입 손익</th></tr></thead><tbody id="annualTargetsDepartments"></tbody></table></div>
+        <details><summary>팀원별 목표와 선택 단가 기준 참고매출 보기</summary><p>개인 참고매출은 투입 M/M × 선택 입력 단가이며, 프로젝트 매출과 별도입니다. 회사·사업부 합계에 다시 더하지 않습니다.</p><div class="table-wrap"><table class="data-table"><thead><tr><th>팀원</th><th>사업부</th><th>고용구분</th><th>목표</th><th>개인 참고매출</th><th>참고 달성률</th><th>인력원가</th><th>참고손익</th></tr></thead><tbody id="annualTargetsWorkers"></tbody></table></div></details>
+    </section>
+    <section class="panel">
+        <div class="panel-header"><div><h3 id="annualTargetsCompanyResults">회사 연간 매출·관리 순이익</h3><p id="annualTargetsCompanyResultDescription">연간 관리 순이익 = 연간 매출 − 연간 인력원가 − 회사 연간 기타비용</p></div><button id="annualTargetsCloseYear" class="button button-secondary" type="button">연도 마감</button></div>
+        <p id="annualTargetsYearCloseStatus" class="inline-status"></p>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>연도</th><th>연간 목표</th><th>연간 매출</th><th>달성률</th><th>인력원가</th><th>회사 연간 기타비용</th><th>관리 순이익</th><th>매출 기준</th></tr></thead><tbody id="annualTargetsYearResult"></tbody></table></div>
+    </section>
+    <section class="panel">
+        <div class="panel-header"><div><h3 id="annualTargetsProjectResults">프로젝트 수주 현황 · 사업·입찰 관리 연동</h3><p>원본의 진행단계·발주금액·당사 수주금액을 조회합니다. 등록 금액은 프로젝트 전체 기준이며, 매출은 선택 결산연도에 직접 입력한 VAT 포함 금액입니다. 수주금액은 매출에 중복 합산하지 않습니다.</p></div></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>프로젝트 / 현재 단계</th><th>발주금액</th><th>당사 등록 수주금액</th><th>실적 구분</th><th>연간 매출</th><th>연간 투입 손익</th><th>원본</th></tr></thead><tbody id="annualTargetsProjects"></tbody></table></div>
+    </section>
+</section>

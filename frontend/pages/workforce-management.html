@@ -3,7 +3,7 @@
         <div>
             <p class="page-kicker">WORKFORCE PORTFOLIO</p>
             <h2 id="workforceManagementTitle">사업·인력 통합 대시보드</h2>
-            <p>선택 연도와 수행기간이 겹치는 확정·계획 프로젝트 및 가용 인력을 한 화면에서 검토합니다.</p>
+            <p>계획·입찰은 계획, 계약·진행·완료는 확정으로 자동 구분합니다. 한 번 등록한 투입정보를 사용하며 취소 사업은 제외합니다.</p>
         </div>
         <div class="workforce-management-header-actions">
             <button id="workforceManagementRefreshButton" class="button button-secondary" type="button" data-workforce-saved-refresh><span aria-hidden="true">↻</span> 새로고침</button>
@@ -11,6 +11,7 @@
     </header>
 
     <section class="workforce-management-toolbar" aria-label="대시보드 조회 조건">
+        <label id="workforceManagementBasisField" class="field" hidden><span>조회 기준</span><select id="workforceManagementBasis" class="select"><option value="project-status">프로젝트 진행상태 기준</option><option value="legacy-scenario">기존 별도 계획안 참고</option></select></label>
         <label class="field workforce-management-year-field"><span>연도</span><select id="workforceManagementYear" class="select"></select></label>
         <label class="field workforce-management-project-field"><span>프로젝트</span><select id="workforceManagementProject" class="select"><option value="">전체 프로젝트</option></select></label>
         <label class="field workforce-management-search-field"><span>프로젝트·인력 검색</span><input id="workforceManagementSearch" class="input" type="search" placeholder="프로젝트명, 고객사, 인력명"></label>
@@ -23,16 +24,16 @@
     </section>
 
     <section class="workforce-management-metrics" aria-label="투입 현황 요약">
-        <article><span>검토 프로젝트</span><strong id="workforceManagementProjectMetric">0개</strong><small id="workforceManagementProjectMetricNote">확정 0 · 계획 0</small></article>
-        <article><span>투입 인력·건</span><strong id="workforceManagementAssignmentMetric">0명 · 0건</strong><small>동일 인력의 복수 프로젝트 투입 허용</small></article>
-        <article><span>가용 인력</span><strong id="workforceManagementAvailableMetric">0명</strong><small id="workforceManagementAvailableMetricNote">월 1.0 M/M 미만 기준</small></article>
-        <article class="is-warning"><span>중복 투입 알림</span><strong id="workforceManagementWarningMetric">0건</strong><small>차단하지 않고 검토 정보로 안내</small></article>
+        <article><span>검토 프로젝트</span><button id="workforceManagementProjectMetric" class="workforce-management-metric-detail" type="button" aria-haspopup="dialog">0개</button><small id="workforceManagementProjectMetricNote">확정 0 · 계획 0</small></article>
+        <article><span>투입 인력·건</span><button id="workforceManagementAssignmentMetric" class="workforce-management-metric-detail" type="button" aria-haspopup="dialog">0명 · 0건</button><small>동일 인력의 복수 프로젝트 투입 허용</small></article>
+        <article><span>가용 인력</span><button id="workforceManagementAvailableMetric" class="workforce-management-metric-detail" type="button" aria-haspopup="dialog">0명</button><small id="workforceManagementAvailableMetricNote">월 1.0 M/M 미만 기준</small></article>
+        <article class="is-warning"><span>중복·초과투입 인력</span><button id="workforceManagementWarningMetric" class="workforce-management-metric-detail" type="button" title="인력별 초과투입 상세 화면 열기">0명</button><small>월 합계 1 M/M 초과 · 인원별 집계</small></article>
     </section>
 
     <section id="workforceManagementAlerts" class="workforce-management-alerts" aria-labelledby="workforceManagementAlertTitle" hidden>
         <div class="workforce-management-section-heading">
-            <div><h3 id="workforceManagementAlertTitle">동일 기간 복수 프로젝트 투입</h3><p>계약 M/M과 무관하게 같은 달에 둘 이상의 프로젝트가 있으면 알려드립니다. 저장은 제한하지 않습니다.</p></div>
-            <span id="workforceManagementAlertCount" class="count-badge">0건</span>
+            <div><h3 id="workforceManagementAlertTitle">월 1 M/M 초과투입 인력</h3><p>같은 달 전체 프로젝트의 계획·확정 투입 합계가 1 M/M을 초과한 인력을 표시합니다. 0.5 + 0.5는 정상입니다. 박스를 누르면 해당 인력의 상세 화면으로 이동합니다.</p></div>
+            <button id="workforceManagementAlertCount" class="count-badge" type="button" aria-label="전체 초과투입 인력 상세 화면 열기">0명</button>
         </div>
         <ul id="workforceManagementAlertList" class="workforce-management-alert-list"></ul>
     </section>
@@ -74,7 +75,7 @@
         <div class="workforce-management-dashboard-grid">
         <aside class="workforce-management-worker-panel" aria-labelledby="workforceManagementWorkerTitle">
             <div class="workforce-management-section-heading">
-                <div><h3 id="workforceManagementWorkerTitle">인력 가용 현황</h3><p>월별 총 M/M과 프로젝트 중복 여부</p></div>
+                <div><h3 id="workforceManagementWorkerTitle">인력 가용 현황</h3><p>월별 총 M/M과 1 M/M 초과 여부</p></div>
                 <div class="workforce-management-heading-actions">
                     <span id="workforceManagementWorkerCount" class="count-badge">0명</span>
                     <button id="workforceManagementWorkerRefreshButton" class="button button-secondary button-small workforce-management-reset-drafts" type="button" data-workforce-saved-refresh title="인력 가용 현황을 저장된 최신 상태로 다시 조회" aria-label="인력 가용 현황 새로고침"><span aria-hidden="true">↻</span></button>
@@ -90,8 +91,16 @@
                 <div><h3 id="workforceManagementTimelineTitle">인력·프로젝트·기간 보드</h3><p id="workforceManagementTimelineDescription">인력별 월 셀에서 여러 프로젝트 투입과 가용 상태를 한 번에 비교합니다.</p></div>
                 <div class="workforce-management-timeline-actions">
                     <div id="workforceManagementMatrixWorkerFilters" class="workforce-management-matrix-worker-filters" hidden>
+                        <div class="workforce-management-summary-toggle" role="group" aria-label="인력 보기 방식">
+                            <button class="button button-secondary button-small is-active" type="button" data-workforce-worker-view="individual" aria-pressed="true">개인별</button>
+                            <button class="button button-secondary button-small" type="button" data-workforce-worker-view="department" aria-pressed="false">사업부별 요약</button>
+                        </div>
                         <label class="field"><span class="sr-only">고용형태·부서</span><select id="workforceManagementMatrixWorkerType" class="select"><option value="ALL">-전체인력-</option><option value="INTERNAL">내부 임직원(전체)</option><option value="INTERNAL_REGULAR" selected>내부 임직원(정규직)</option><option value="INTERNAL_NON_REGULAR">내부 임직원(정규직외)</option><option value="PARTNER">협력업체</option></select></label>
                         <label class="field"><span class="sr-only">인력 이름 검색</span><input id="workforceManagementMatrixWorkerSearch" class="input" type="search" placeholder="인력 이름 검색" autocomplete="off"></label>
+                    </div>
+                    <div id="workforceManagementProjectSummaryControls" class="workforce-management-summary-toggle" role="group" aria-label="프로젝트 펼침 상태">
+                        <button class="button button-secondary button-small is-active" type="button" data-workforce-project-display="summary" aria-pressed="true">프로젝트 요약</button>
+                        <button class="button button-secondary button-small" type="button" data-workforce-project-display="expanded" aria-pressed="false">전체 인력 펼치기</button>
                     </div>
                     <label id="workforceManagementProjectSortField" class="field workforce-management-project-sort">
                         <span>프로젝트 정렬</span>
@@ -100,7 +109,7 @@
                             <option value="customer">발주처</option>
                         </select>
                     </label>
-                    <div class="workforce-management-legend" aria-label="타임라인 범례"><span class="is-confirmed">확정 투입</span><span class="is-planning">계획 투입</span><span class="is-overlap">중복 알림</span></div>
+                    <div class="workforce-management-legend" aria-label="타임라인 범례"><span class="is-confirmed">확정 투입</span><span class="is-planning">계획 투입</span><span class="is-overlap">과부하·중복 알림</span></div>
                     <button id="workforceManagementApplyDraftsButton" class="button button-primary button-small" type="button" hidden>변경사항 저장</button>
                     <button id="workforceManagementResetDraftsButton" class="button button-secondary button-small workforce-management-reset-drafts" type="button" data-workforce-saved-refresh title="저장하지 않은 변경을 취소하고 저장된 상태로 다시 조회" aria-label="보드 새로고침"><span aria-hidden="true">↻</span></button>
                     <button id="workforceManagementEditModeButton" class="button workforce-management-edit-mode-button" type="button"
@@ -145,8 +154,13 @@
             </header>
             <div class="dialog-body">
                 <div class="workforce-management-quick-worker"><strong id="workforceManagementQuickWorker"></strong><span id="workforceManagementQuickCompany"></span></div>
+                <div class="workforce-management-quick-detail-grid" aria-label="매출·원가 단가 입력">
+                    <label class="field"><span>개인 비교용 매출단가 (선택 · 원 / M/M)</span><input id="workforceManagementQuickSales" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickPriceHelp"></label>
+                    <label class="field" data-workforce-admin-cost><span>원가단가 (원 / M/M)</span><input id="workforceManagementQuickCost" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickPriceHelp"></label>
+                </div>
+                <p id="workforceManagementQuickPriceHelp" class="workforce-management-quick-period-note">매출단가는 개인 목표 대비 참고매출(M/M × 단가) 계산용 선택 항목입니다. 회사 매출은 사업·입찰 관리의 연도별 매출액으로 계산합니다. 원가단가는 인력원가에 반영됩니다.</p>
                 <div class="workforce-management-quick-period">
-                    <label class="field"><span>투입 구분</span><select id="workforceManagementQuickAssignmentStatus" class="select" required><option value="CONFIRMED">확정 투입</option><option value="PLANNED">계획 투입</option></select></label>
+                    <label class="field"><span id="workforceManagementQuickStatusLabel">투입 구분 · 진행상태 자동 적용</span><select id="workforceManagementQuickAssignmentStatus" class="select" required><option value="CONFIRMED">확정 투입</option><option value="PLANNED">계획 투입</option></select></label>
                     <label class="field"><span>투입 시작일</span><input id="workforceManagementQuickStart" class="input" type="date" required></label>
                     <label class="field"><span>투입 종료일</span><input id="workforceManagementQuickEnd" class="input" type="date" required></label>
                 </div>
@@ -165,11 +179,9 @@
                 </div>
                 <div id="workforceManagementQuickAllocationInputs" class="workforce-management-quick-allocation-inputs" aria-label="월별 M/M 입력"></div>
                 <details class="workforce-management-quick-details">
-                    <summary>직책·업무·단가·비고 추가 설정</summary>
+                    <summary>직책·업무·비고 추가 설정</summary>
                     <div class="workforce-management-quick-detail-grid">
                         <label class="field"><span>직책</span><input id="workforceManagementQuickRole" class="input" maxlength="100" placeholder="PM, PL 등"></label>
-                        <label class="field" data-workforce-admin-cost><span>원가단가</span><input id="workforceManagementQuickCost" class="input" type="number" min="0" step="1" value="0"></label>
-                        <label class="field"><span>매출단가</span><input id="workforceManagementQuickSales" class="input" type="number" min="0" step="1" value="0"></label>
                         <label class="field workforce-management-quick-detail-wide"><span>주요업무</span><textarea id="workforceManagementQuickPrimaryDuty" class="textarea" rows="2" maxlength="1000" placeholder="프로젝트에서 담당할 주요업무"></textarea></label>
                         <label class="field workforce-management-quick-detail-wide"><span>비고</span><input id="workforceManagementQuickNote" class="input" maxlength="2000"></label>
                     </div>

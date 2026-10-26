@@ -13,6 +13,8 @@ from backend.auth_context import get_request_user_id, require_admin_role
 from backend.database import get_db_connection
 from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
+from backend.department_config import departments
+from backend.project_revenue import RevenueWrite, revenue_detail, save_revenue
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,10 @@ _SORT_FIELDS = {
 _MAX_AMOUNT = 999_999_999_999_999_999
 _MONEY_COLUMNS = {"ORDER_AMOUNT_VAT", "CONTRACT_AMOUNT_VAT"}
 
+_PROJECT_WRITE_BINDS = {"projectYear", "projectName", "customerName", "projectStartDate", "projectEndDate", "orderAmountVat", "contractAmountVat", "participationTypeCode", "participationRate", "orderDate", "bidDate", "statusCode", "description", "departmentCode", "userId"}
+SqlLoader.register_bind_contract("ADMIN_PROJECT_INSERT", _PROJECT_WRITE_BINDS | {"projectIdOut"})
+SqlLoader.register_bind_contract("ADMIN_PROJECT_UPDATE", _PROJECT_WRITE_BINDS | {"projectId"})
+
 
 class ProjectWriteRequest(BaseModel):
     projectYear: int = Field(ge=1900, le=2100)
@@ -56,6 +62,7 @@ class ProjectWriteRequest(BaseModel):
     orderDate: date | None = None
     bidDate: date | None = None
     statusCode: str = Field(default="PLANNED", max_length=30)
+    departmentCode: str | None = Field(default=None, max_length=50)
     description: str = Field(default="", max_length=2000)
     model_config = ConfigDict(extra="forbid")
 
@@ -114,7 +121,10 @@ def _project_params(payload: ProjectWriteRequest, user_id: int) -> dict[str, Any
             detail="프로젝트 종료일은 시작일보다 빠를 수 없습니다.",
         )
 
+    if payload.departmentCode and payload.departmentCode not in {d["code"] for d in departments()}:
+        raise HTTPException(400, "등록된 담당 사업부를 선택해 주세요.")
     return {
+        "departmentCode": payload.departmentCode or None,
         "projectYear": payload.projectYear,
         "projectName": project_name,
         "customerName": customer_name,
@@ -189,7 +199,7 @@ def list_projects(
         "periodYearFrom": periodYearFrom,
         "periodYearTo": periodYearTo,
         "keyword": _like_pattern(keyword),
-        "statusCode": _choice(statusCode, _PROJECT_STATUSES, "진행상태", allow_all=True),
+        "statusCode": _choice(statusCode, _PROJECT_STATUSES | {"PRE_CONTRACT", "POST_CONTRACT"}, "진행상태", allow_all=True),
         "participationTypeCode": _choice(
             participationTypeCode,
             _PARTICIPATION_TYPES,
@@ -266,6 +276,44 @@ def get_project(project_id: int):
             cursor.close()
         if conn:
             conn.close()
+
+
+def _revenue_transaction(callback):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        result = callback(cursor)
+        conn.commit()
+        return {"status": "success", "data": result}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        logger.exception("Project revenue request failed.")
+        raise_database_http_error(exc, default_detail="프로젝트 매출을 처리하지 못했습니다.", conflict_details={1: "다른 사용자가 같은 연도를 등록했습니다. 다시 조회해 주세요."})
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/{project_id}/revenue")
+def get_project_revenue(project_id: int):
+    return _revenue_transaction(lambda cursor: revenue_detail(cursor, _fetch_project(cursor, project_id)))
+
+
+@router.put("/{project_id}/revenue/{year}")
+def update_project_revenue(project_id: int, year: int, payload: RevenueWrite, request: Request):
+    if not 1900 <= year <= 2100:
+        raise HTTPException(400, "매출 연도를 확인해 주세요.")
+    actor = get_request_user_id(request)
+    return _revenue_transaction(lambda cursor: save_revenue(cursor, _fetch_project(cursor, project_id), year, payload, actor))
 
 
 @router.post("")

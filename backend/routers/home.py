@@ -17,6 +17,9 @@ from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.routers.admin_users import _photo_thumbnail, _photo_version
 from backend.routers.planning_scenarios import load_scenario_detail
+from backend.routers.project_assignments import _rows as assignment_rows
+from backend.project_lifecycle import registered_financials
+from backend.annual_performance import load_sources as load_annual_sources, report as annual_report, monthly_sales, annual_trend
 
 
 router = APIRouter()
@@ -315,9 +318,60 @@ def dashboard(
                 "연간 사업·인력계획 스키마가 아직 설치되지 않았습니다."
             )
 
+        # Add the registered-project ledger without changing the legacy scenario response.
+        financials = None
+        try:
+            cursor.execute(
+                SqlLoader.get_sql("PROJECT_ASSIGNMENT_WORKSPACE_ASSIGNMENTS"),
+                {"projectYear": plan_year},
+            )
+            financials = registered_financials(assignment_rows(cursor), plan_year)
+        except Exception as exc:
+            if oracle_error_code(exc) not in {904, 942}:
+                raise
+            schema_warnings.append("프로젝트 투입 스키마가 아직 설치되지 않았습니다.")
+
+        annual_performance = None
+        revenue_trend = []
+        try:
+            annual_source = load_annual_sources(cursor, plan_year)
+            annual_performance = annual_report(annual_source)
+            annual_performance["targetSaved"] = annual_performance.get("targetRecorded", bool(annual_source.get("annualEntries")) or int(annual_performance["summary"]["targetAmount"]) > 0)
+            revenue_trend = annual_trend(cursor, plan_year, annual_source, annual_performance)
+            # Both screens consume the same annual rollup; no monthly target/cost allocation.
+            if financials:
+                summary = annual_performance["summary"]
+                confirmed = financials["confirmed"]
+                confirmed["summary"].update(targetAmount=summary["targetAmount"], totalSalesAmount=summary["salesAmount"],
+                    costBreakdownAvailable=annual_performance.get("costBreakdownAvailable", True),
+                    laborCostAmount=summary["costAmount"], otherCost=summary["otherCost"],
+                    totalCostAmount=str(int(summary["costAmount"]) + int(summary["otherCost"])), operatingProfit=summary["netProfit"],
+                    assignmentCount=len({f["assignmentId"] for f in annual_performance["facts"] if f["phase"] == "confirmed"}))
+                confirmed["revenueBasis"] = annual_performance.get("revenueBasis", "LEGACY_WORKER_RATE")
+                confirmed["missingRevenue"] = annual_performance.get("missingRevenue", [])
+                confirmed.pop("monthlySales", None)
+                planning = financials["planning"]
+                facts = [f for f in annual_performance["facts"] if f["phase"] == "planning"]
+                sales = sum(int(f["salesAmount"]) for f in facts)
+                cost = sum(int(f["costAmount"]) for f in facts)
+                planning["summary"].update(totalSalesAmount=str(sales), totalCostAmount=str(cost), laborCostAmount=str(cost),
+                    otherCost="0", operatingProfit=str(sales - cost), assignmentCount=len({f["assignmentId"] for f in facts}))
+                planning["monthlySales"] = monthly_sales(plan_year, facts)
+                # Month data belongs to the input ledger, not the default management report.
+                confirmed.pop("monthlyFinancials", None)
+                planning.pop("monthlyFinancials", None)
+        except Exception as exc:
+            if oracle_error_code(exc) not in {904, 942}:
+                raise
+            schema_warnings.append("연간 목표·실적 스키마가 아직 설치되지 않았습니다.")
+            financials = None  # Never substitute worker-rate sales for missing annual revenue.
+
         return {
             "status": "success",
             "data": {
+                "annualPerformance": annual_performance,
+                "annualTrend": revenue_trend,
+                "financials": financials,
                 "appName": os.getenv("APP_NAME", "INIT Members"),
                 "user": user,
                 "dashboardType": "executive",

@@ -23,6 +23,112 @@
     let projectViewMode = "list";
     let masterCompanies = [];
     let projectCompanies = [];
+    let projectBaseline = "";
+    let companyBaseline = "";
+    let companyRequestId = 0;
+    let mutationBusy = false;
+    let revenueData = null;
+    let revenueRequestId = 0;
+    let revenueBaselines = new Map();
+
+    function revenueSnapshot(row) {
+        return JSON.stringify([row.querySelector("[data-revenue-amount]").value, row.querySelector("[data-revenue-note]").value]);
+    }
+    function revenueChanged() {
+        return [...(query("#adminProjectRevenueRows")?.rows || [])].some(row => revenueSnapshot(row) !== revenueBaselines.get(row.dataset.revenueYear));
+    }
+    function revenueRow(item) {
+        const make=Common.dom.element;
+        const row=make("tr", {attrs:{"data-revenue-year":item.year, "data-revenue-revision":item.revision}});
+        const amount=make("input", {className:"input",attrs:{type:"number",min:0,max:"999999999999999999",step:1,"data-revenue-amount":"", "aria-label":`${item.year}년 매출액`, placeholder:"미등록"}});
+        amount.value=item.saved ? item.totalAmount : ""; amount.disabled=item.closed;
+        const note=make("input", {className:"input",attrs:{maxlength:2000,"data-revenue-note":"", "aria-label":`${item.year}년 결산 내역`}});
+        note.value=item.note || "";note.disabled=item.closed;
+        const save=make("button",{className:"button button-primary button-small",type:"button",text:item.closed?"마감됨":"매출 저장",attrs:{"data-revenue-save":item.year}});save.disabled=item.closed;
+        row.append(make("td",{text:`${item.ordinal ? `${item.ordinal}차년 · ` : ""}${item.year}년${item.saved ? "" : " · 미등록"}`}));
+        row.append(make("td",{},[amount]),make("td",{},[note]),make("td",{},[save]));
+        revenueBaselines.set(String(item.year),revenueSnapshot(row));
+        return row;
+    }
+    function revenueSummary() {
+        const money=value=>`${BigInt(value || 0).toLocaleString("ko-KR")}원`;
+        query("#adminProjectRevenueSummary").textContent=revenueData ? `총수주금액 ${money(revenueData.contractAmountVat)} · 등록 매출 합계 ${money(revenueData.totalAmount)}` : "프로젝트를 먼저 저장해 주세요.";
+    }
+    function revealRevenue(year) {
+        Common.ui.revealEditor(query("#adminProjectRevenuePanel"));
+        const row=[...query("#adminProjectRevenueRows").rows].find(row=>Number(row.dataset.revenueYear)===Number(year));
+        row?.querySelector("[data-revenue-amount]")?.focus();
+    }
+    async function loadRevenue(id, preserve=false) {
+        const sequence=++revenueRequestId;
+        const drafts=new Map();
+        if (preserve) [...query("#adminProjectRevenueRows").rows].forEach(row=>{
+            if (revenueSnapshot(row)!==revenueBaselines.get(row.dataset.revenueYear)) drafts.set(row.dataset.revenueYear,{snapshot:revenueSnapshot(row),revision:row.dataset.revenueRevision,baseline:revenueBaselines.get(row.dataset.revenueYear)});
+        });
+        if (!id) {revenueData=null;revenueBaselines.clear();query("#adminProjectRevenueRows").replaceChildren();revenueSummary();return;}
+        try {
+            const payload=await Common.api.request(`/admin/projects/${encodeURIComponent(id)}/revenue`,{signal:controller.signal,showLoading:false});
+            if (!root || sequence!==revenueRequestId) return;
+            revenueData=Common.data.get(payload); revenueBaselines.clear();
+            const rows=revenueData.years.map(item=>revenueRow(item));
+            drafts.forEach((draft,year)=>{
+                const row=rows.find(row=>row.dataset.revenueYear===year);
+                if (!row) return;
+                const [amount,note]=JSON.parse(draft.snapshot);row.querySelector("[data-revenue-amount]").value=amount;row.querySelector("[data-revenue-note]").value=note;
+                row.dataset.revenueRevision=draft.revision;revenueBaselines.set(year,draft.baseline);
+            });
+            query("#adminProjectRevenueRows").replaceChildren(...rows);revenueSummary();
+            query("#adminProjectRevenueAddYear").value=new Date().getFullYear();
+            Common.ui.setInlineStatus(query("#adminProjectRevenueStatus"),"연도마다 따로 저장합니다. 매출이 없음을 확인한 연도는 0원으로 저장할 수 있습니다.");
+        } catch(error) {if(sequence===revenueRequestId && error.name!=="AbortError") Common.ui.setInlineStatus(query("#adminProjectRevenueStatus"),error.message,"error");}
+    }
+    async function saveRevenue(button) {
+        if (mutationBusy) return;
+        const row=button.closest("tr"),amount=row.querySelector("[data-revenue-amount]").value.trim();
+        if (!/^\d{1,18}$/.test(amount)) {Common.ui.setInlineStatus(query("#adminProjectRevenueStatus"),"연간 매출액을 원 단위로 입력하세요. 매출이 없으면 0을 입력하세요.","error");return;}
+        mutationBusy=true;button.disabled=true;
+        try {
+            const payload=await Common.api.request(`/admin/projects/${query("#projectId").value}/revenue/${row.dataset.revenueYear}`,{method:"PUT",body:{revision:Number(row.dataset.revenueRevision),amount,note:row.querySelector("[data-revenue-note]").value},signal:controller.signal});
+            const updated=Common.data.get(payload),item=updated.years.find(item=>String(item.year)===row.dataset.revenueYear);
+            revenueData=updated;row.replaceWith(revenueRow(item));revenueSummary();
+            Common.ui.setInlineStatus(query("#adminProjectRevenueStatus"),`${item.year}년 매출을 저장했습니다. 메인·연간 실적에 반영됩니다.`,"success");
+        } catch(error) {if(error.name!=="AbortError") Common.ui.setInlineStatus(query("#adminProjectRevenueStatus"),error.message,"error");}
+        finally {mutationBusy=false;button.disabled=false;}
+    }
+
+    function formSnapshot(selector) {
+        return JSON.stringify([...query(selector).querySelectorAll("input, select, textarea")].map((input) => [input.id, input.value]));
+    }
+
+    function hasChanges() {
+        return Boolean(query("#adminProjectDetailDialog")?.open) && (
+            projectBaseline !== formSnapshot("#projectForm") || companyBaseline !== formSnapshot("#adminProjectCompanyForm") || revenueChanged()
+        );
+    }
+
+    async function confirmDiscard() {
+        if (mutationBusy) {
+            Common.ui.toast("저장 처리가 끝난 뒤 닫아 주세요.", "warning");
+            return false;
+        }
+        return !hasChanges() || await Common.ui.confirm("저장하지 않은 프로젝트·참여회사·매출 입력을 닫으시겠습니까?", {
+            title: "변경사항 확인", confirmText: "저장하지 않고 닫기", danger: true
+        });
+    }
+
+    function openProjectDialog() {
+        const dialog = query("#adminProjectDetailDialog");
+        if (!dialog.open) dialog.showModal();
+        query("#adminProjectDialogTitle").focus({ preventScroll: true });
+    }
+
+    async function closeProjectDialog() {
+        if (!(await confirmDiscard())) return;
+        detailRequestId += 1;
+        companyRequestId += 1;
+        query("#adminProjectDetailDialog").close();
+        revenueRequestId += 1;
+    }
 
     function query(selector) {
         return root?.querySelector(selector) || null;
@@ -47,6 +153,21 @@
             const input = query(selector);
             if (input && (force || !input.value)) input.value = currentYear;
         });
+    }
+
+    function applyListContext(route = {}) {
+        route = route || {};
+        if (!route.planYear && !route.statusCode) return false;
+        query("#projectSearchForm").reset();
+        setDefaultProjectPeriodYearFilters({force:true});
+        const year=Number(route.planYear);
+        if (Number.isInteger(year) && year>=1900 && year<=2100) {
+            query("#projectPeriodYearFromFilter").value=String(year);
+            query("#projectPeriodYearToFilter").value=String(year);
+        }
+        if ([...query("#projectStatusFilter").options].some((option)=>option.value===route.statusCode)) query("#projectStatusFilter").value=route.statusCode;
+        setDetailSearchExpanded(false);
+        return true;
     }
 
     function dateValue(nextValue) {
@@ -103,6 +224,7 @@
         query("#deleteAdminProjectCompanyButton").hidden = true;
         syncProjectCompanySelection();
         Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), "");
+        companyBaseline = formSnapshot("#adminProjectCompanyForm");
     }
 
     function syncProjectCompanySelection(selectedId = query("#adminProjectCompanyId")?.value || "") {
@@ -123,6 +245,8 @@
         query("#deleteAdminProjectCompanyButton").hidden = false;
         syncProjectCompanySelection();
         Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), `${value(company, "companyName", "COMPANY_NAME") || "참여회사"} 정보를 수정하고 있습니다.`);
+        companyBaseline = formSnapshot("#adminProjectCompanyForm");
+        Common.ui.revealEditor(query("#adminProjectCompanyForm"));
     }
 
     function renderProjectCompanies() {
@@ -158,6 +282,7 @@
     }
 
     async function loadProjectCompanies(id) {
+        const requestId = ++companyRequestId;
         const panel = query("#projectCompanyEditorPanel");
         panel.hidden = !id;
         projectCompanies = [];
@@ -172,6 +297,7 @@
                 signal: controller.signal,
                 showLoading: false
             });
+            if (requestId !== companyRequestId) return;
             projectCompanies = Common.data.get(payload)?.companies || [];
             renderProjectCompanies();
             Common.ui.setInlineStatus(
@@ -180,6 +306,7 @@
                 projectCompanies.length ? "success" : "warning"
             );
         } catch (error) {
+            if (requestId !== companyRequestId || error?.name === "AbortError") return;
             Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), error.message || "참여회사 정보를 불러오지 못했습니다.", "error");
         }
     }
@@ -375,6 +502,7 @@
         setValue("#projectOrderDate", dateValue(value(project, "orderDate", "ORDER_DATE")));
         setValue("#projectBidDate", dateValue(value(project, "bidDate", "BID_DATE")));
         setValue("#projectStatusCode", value(project, "statusCode", "STATUS_CODE") || "PLANNED");
+        setValue("#projectDepartmentCode", value(project, "departmentCode", "DEPARTMENT_CODE") || "");
         setValue("#projectDescription", value(project, "description", "DESCRIPTION") || "");
 
         query("#projectEditorTitle").textContent = id ? "프로젝트 상세 및 수정" : "프로젝트 등록";
@@ -382,11 +510,16 @@
             ? `프로젝트 #${id}을(를) 수정하고 있습니다.`
             : "새 프로젝트를 등록하고 있습니다.";
         query("#deleteProjectButton").hidden = !id;
+        query("#adminProjectCompanyJump").disabled = !id;
+        query("#adminProjectRevenueJump").disabled = !id;
+        query("#adminProjectRevenueAdd").disabled = !id;
         query("#projectAuditInfo").hidden = !id;
         query("#projectCreatedAudit").textContent = id ? auditText(project, "created") : "-";
         query("#projectUpdatedAudit").textContent = id ? auditText(project, "updated") : "-";
         Common.ui.setInlineStatus(query("#projectEditorStatus"), "");
         grid?.setSelectedKey(id);
+        projectBaseline = formSnapshot("#projectForm");
+        query("#adminProjectDialogTitle").textContent = id ? value(project, "projectName", "PROJECT_NAME") || "프로젝트 상세" : "새 프로젝트 등록";
     }
 
     function newProject(options = {}) {
@@ -395,12 +528,24 @@
         grid?.clearSelection();
         fillProjectForm();
         loadProjectCompanies("");
-        if (options.focus !== false) query("#projectName")?.focus();
+        loadRevenue("");
+        query("#adminProjectDialogFields").disabled = false;
+        if (options.focus !== false) {
+            openProjectDialog();
+            query("#projectName")?.focus();
+        }
     }
 
     async function loadProject(id) {
         if (!id) return;
+        if (!(await confirmDiscard())) return;
         const requestId = ++detailRequestId;
+        fillProjectForm();
+        loadProjectCompanies("");
+        loadRevenue("");
+        query("#adminProjectDialogTitle").textContent = "프로젝트 상세 불러오는 중";
+        query("#adminProjectDialogFields").disabled = true;
+        openProjectDialog();
         grid?.setSelectedKey(id);
         Common.ui.setInlineStatus(query("#projectEditorStatus"), "프로젝트 상세를 불러오고 있습니다.");
         try {
@@ -412,14 +557,13 @@
             if (requestId !== detailRequestId) return;
             fillProjectForm(Common.data.get(payload) || {});
             await loadProjectCompanies(id);
-            if (window.matchMedia("(max-width: 760px)").matches) {
-                query("#projectEditorPanel")?.scrollIntoView({
-                    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-                    block: "start"
-                });
-            }
+            await loadRevenue(id);
+            if (requestId !== detailRequestId) return;
+            query("#adminProjectDialogFields").disabled = false;
+            query("#adminProjectDialogTitle").focus({ preventScroll: true });
         } catch (error) {
             if (requestId !== detailRequestId || error?.name === "AbortError") return;
+            query("#adminProjectDialogTitle").textContent = "프로젝트 조회 실패";
             Common.ui.setInlineStatus(
                 query("#projectEditorStatus"),
                 error.message || "프로젝트 상세를 불러오지 못했습니다.",
@@ -455,6 +599,7 @@
             orderDate: query("#projectOrderDate").value || null,
             bidDate: query("#projectBidDate").value || null,
             statusCode: query("#projectStatusCode").value,
+            departmentCode: query("#projectDepartmentCode").value || null,
             description: query("#projectDescription").value.trim()
         };
     }
@@ -478,10 +623,12 @@
 
     async function saveProject(event) {
         event.preventDefault();
+        if (mutationBusy) return;
         if (!validateProjectForm()) return;
         const id = query("#projectId").value;
         const button = query("#saveProjectButton");
         button.disabled = true;
+        mutationBusy = true;
         try {
             const response = await Common.api.request(
                 id ? `/admin/projects/${encodeURIComponent(id)}` : "/admin/projects",
@@ -499,6 +646,7 @@
             await grid.load();
             grid.setSelectedKey(savedId);
             await loadProjectCompanies(savedId);
+            await loadRevenue(savedId, Boolean(id));
         } catch (error) {
             if (error?.name !== "AbortError") {
                 Common.ui.setInlineStatus(
@@ -508,11 +656,13 @@
                 );
             }
         } finally {
+            mutationBusy = false;
             button.disabled = false;
         }
     }
 
     async function deleteProject() {
+        if (mutationBusy) return;
         const id = query("#projectId").value;
         const name = query("#projectName").value.trim() || "선택한 프로젝트";
         if (!id || !(await Common.ui.confirm(
@@ -522,6 +672,7 @@
 
         const button = query("#deleteProjectButton");
         button.disabled = true;
+        mutationBusy = true;
         try {
             await Common.api.request(`/admin/projects/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -530,6 +681,7 @@
             });
             Common.ui.toast("프로젝트를 삭제했습니다.", "success");
             newProject({ focus: false });
+            query("#adminProjectDetailDialog").close();
             await grid.load();
         } catch (error) {
             if (error?.name !== "AbortError") {
@@ -540,6 +692,7 @@
                 );
             }
         } finally {
+            mutationBusy = false;
             button.disabled = false;
         }
     }
@@ -558,6 +711,7 @@
 
     async function saveProjectCompany(event) {
         event.preventDefault();
+        if (mutationBusy) return;
         const projectIdValue = query("#projectId").value;
         const form = event.currentTarget;
         if (!projectIdValue) {
@@ -568,6 +722,7 @@
         const companyId = query("#adminProjectCompanyId").value;
         const button = form.querySelector('button[type="submit"]');
         button.disabled = true;
+        mutationBusy = true;
         try {
             await Common.api.request(
                 `/project-assignments/${encodeURIComponent(projectIdValue)}/companies${companyId ? `/${encodeURIComponent(companyId)}` : ""}`,
@@ -584,11 +739,13 @@
         } catch (error) {
             Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), error.message || "참여회사를 저장하지 못했습니다.", "error");
         } finally {
+            mutationBusy = false;
             button.disabled = false;
         }
     }
 
     async function deleteProjectCompany() {
+        if (mutationBusy) return;
         const projectIdValue = query("#projectId").value;
         const companyId = query("#adminProjectCompanyId").value;
         if (!projectIdValue || !companyId || !(await Common.ui.confirm(
@@ -597,6 +754,7 @@
         ))) return;
         const button = query("#deleteAdminProjectCompanyButton");
         button.disabled = true;
+        mutationBusy = true;
         try {
             await Common.api.request(
                 `/project-assignments/${encodeURIComponent(projectIdValue)}/companies/${encodeURIComponent(companyId)}?versionToken=${encodeURIComponent(query("#adminProjectCompanyForm").dataset.versionToken || "")}`,
@@ -607,6 +765,7 @@
         } catch (error) {
             Common.ui.setInlineStatus(query("#adminProjectCompanyStatus"), error.message || "참여회사를 삭제하지 못했습니다.", "error");
         } finally {
+            mutationBusy = false;
             button.disabled = false;
         }
     }
@@ -616,6 +775,30 @@
         async init(context) {
             root = context.root;
             controller = new AbortController();
+            const departmentResponse = await fetch("/config/departments.json", { signal: controller.signal, credentials: "same-origin" });
+            if (!departmentResponse.ok) throw new Error("사업부 설정을 불러오지 못했습니다.");
+            const departmentConfig = await departmentResponse.json();
+            departmentConfig.departments.forEach((d) => query("#projectDepartmentCode").append(Common.dom.element("option", { text: d.label, attrs: { value: d.code } })));
+            const dialog = query("#adminProjectDetailDialog");
+            Common.ui.bindDraggableDialog(dialog, query("#adminProjectDialogHandle"), controller.signal);
+            root.querySelectorAll("[data-admin-project-close]").forEach((button) => {
+                button.addEventListener("click", closeProjectDialog, { signal: controller.signal });
+            });
+            root.querySelectorAll("[data-admin-project-section]").forEach((button) => {
+                button.addEventListener("click", () => Common.ui.revealEditor(query(`#${button.dataset.adminProjectSection}`)), { signal: controller.signal });
+            });
+            query("#adminProjectRevenueRows").addEventListener("click",event=>{const button=event.target.closest("[data-revenue-save]");if(button) saveRevenue(button);},{signal:controller.signal});
+            query("#adminProjectRevenueAdd").addEventListener("click",()=>{
+                const year=Number(query("#adminProjectRevenueAddYear").value);
+                if (!Number.isInteger(year) || year<1900 || year>2100 || !revenueData) return;
+                let row=[...query("#adminProjectRevenueRows").rows].find(row=>Number(row.dataset.revenueYear)===year);
+                if (!row) {row=revenueRow({year,revision:0,saved:false});query("#adminProjectRevenueRows").appendChild(row);}
+                row.querySelector("[data-revenue-amount]").focus();
+            },{signal:controller.signal});
+            dialog.addEventListener("cancel", (event) => {
+                event.preventDefault();
+                closeProjectDialog();
+            }, { signal: controller.signal });
             setDefaultProjectPeriodYearFilters();
             const referencePayload = await Common.api.request("/project-assignments/references", {
                 signal: controller.signal,
@@ -671,7 +854,7 @@
             query("#newProjectButton")?.addEventListener("click", () => newProject(), {
                 signal: controller.signal
             });
-            query("#clearProjectButton")?.addEventListener("click", () => newProject(), {
+            query("#clearProjectButton")?.addEventListener("click", async () => { if (await confirmDiscard()) newProject(); }, {
                 signal: controller.signal
             });
             query("#projectForm")?.addEventListener("submit", saveProject, {
@@ -698,11 +881,38 @@
 
             newProject({ focus: false });
             setProjectView(projectViewMode);
+            applyListContext(context.routeContext);
             await grid.load();
+            if (context.routeContext?.projectId) {await loadProject(context.routeContext.projectId);if(context.routeContext.view==="revenue") revealRevenue(context.routeContext.planYear);}
+        },
+
+        async activate(context = {}) {
+            if (applyListContext(context.routeContext)) await grid.load({resetPage:true});
+            if (context.routeContext?.projectId) {await loadProject(context.routeContext.projectId);if(context.routeContext.view==="revenue") revealRevenue(context.routeContext.planYear);}
+        },
+
+        async beforeLeave() {
+            if (!(await confirmDiscard())) return false;
+            detailRequestId += 1;
+            companyRequestId += 1;
+            revenueRequestId += 1;
+            query("#adminProjectDetailDialog")?.close();
+            return true;
+        },
+        deactivate() { query("#adminProjectDetailDialog")?.close(); },
+        hasUnsavedChanges() { return mutationBusy || hasChanges(); },
+        discardChanges() {
+            projectBaseline = formSnapshot("#projectForm");
+            companyBaseline = formSnapshot("#adminProjectCompanyForm");
+            [...query("#adminProjectRevenueRows").rows].forEach(row=>revenueBaselines.set(row.dataset.revenueYear,revenueSnapshot(row)));
         },
 
         destroy() {
             detailRequestId += 1;
+            companyRequestId += 1;
+            revenueRequestId += 1;revenueData=null;revenueBaselines.clear();
+            query("#adminProjectDetailDialog")?.close();
+            mutationBusy = false;
             grid?.destroy();
             controller?.abort();
             grid = null;

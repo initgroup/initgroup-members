@@ -14,6 +14,7 @@
     let userTotal = 0;
     let userTotalPages = 1;
     let departments = [];
+    let historySequence = 0, historyItems = [], historyEditing = null, historyDirty = false, historyBusy = false, profileBaseline = "";
     const EMPLOYMENT_STATUS_LABELS = { ACTIVE: "재직", LEAVE: "휴직", RETIRED: "퇴직" };
     const EMPLOYMENT_TYPE_LABELS = {
         REGULAR: "정규직", CONTRACT: "계약직", EXECUTIVE: "임원",
@@ -161,6 +162,7 @@
         setValue("#userBirthDate", dateValue(value(row, "birthDate", "BIRTH_DATE")));
         setValue("#userBirthCalendarCode", String(value(row, "birthCalendarCode", "BIRTH_CALENDAR_CODE") || "SOLAR").toUpperCase());
         setValue("#userHireDate", dateValue(value(row, "hireDate", "HIRE_DATE")));
+        setValue("#userProfileEffectiveDate", "");
         setValue("#userRetirementDate", dateValue(value(row, "retirementDate", "RETIREMENT_DATE")));
         setValue("#userEmploymentStatusCode", String(value(row, "employmentStatusCode", "EMPLOYMENT_STATUS_CODE") || "ACTIVE").toUpperCase());
         setValue("#userEmploymentTypeCode", String(value(row, "employmentTypeCode", "EMPLOYMENT_TYPE_CODE") || "").toUpperCase());
@@ -184,6 +186,83 @@
         Common.ui.setInlineStatus(query("#userEditorStatus"), "");
         selectedUserId = id ? String(id) : null;
         updateSelectedRow();
+        profileBaseline = profileSnapshot();
+        loadHistory(id);
+    }
+
+    const historyStatus = (message, type = "") => Common.ui.setInlineStatus(query("#adminUsersHistoryStatus"), message, type);
+    const profileSnapshot = () => JSON.stringify([...root.querySelectorAll("#userForm input:not([type=file]), #userForm select, #userForm textarea")].map((n) => n.value));
+
+    function editHistory(item = null) {
+        historyEditing = item; historyDirty = false;
+        const latest = item || historyItems.at(-1) || {};
+        query("#adminUsersHistoryEditorTitle").textContent = item ? `${item.effective_from} 이력 수정` : "이력 추가";
+        setValue("#adminUsersHistoryFrom", item?.effective_from || "");
+        setValue("#adminUsersHistoryDept", latest.department_code || "UNASSIGNED");
+        setValue("#adminUsersHistoryType", latest.employment_type_code || "REGULAR");
+        setValue("#adminUsersHistoryState", latest.employment_status_code || "ACTIVE");
+        setValue("#adminUsersHistoryHire", latest.hire_date || "");
+        setValue("#adminUsersHistoryRetire", latest.retirement_date || "");
+    }
+
+    async function loadHistory(id) {
+        const seq = ++historySequence;
+        historyItems = []; editHistory();
+        query("#adminUsersHistoryRows").replaceChildren();
+        query("#adminUsersHistoryPanel").hidden = !id;
+        query("#adminUsersHistoryJump").hidden = !id;
+        query("#adminUsersHistoryForm").inert = true;
+        if (!id) return;
+        historyStatus("이력을 불러오고 있습니다.");
+        try {
+            const result = Common.data.get(await Common.api.request(`/admin/users/${encodeURIComponent(id)}/history`, { signal: controller.signal, showLoading: false }));
+            if (!root || seq !== historySequence || String(id) !== selectedUserId) return;
+            historyItems = result.items;
+            historyItems.forEach((item) => {
+                const tr = Common.dom.element("tr");
+                const locked = result.lastClosedMonth && item.effective_from.slice(0, 7) <= result.lastClosedMonth;
+                tr.append(cell(item.effective_from), cell(item.department_name), cell(EMPLOYMENT_TYPE_LABELS[item.employment_type_code]), cell(EMPLOYMENT_STATUS_LABELS[item.employment_status_code]), cell(item.hire_date || "—"), cell(item.retirement_date || "—"), cell(item.source_code === "BASELINE" ? "초기값 · 검토 필요" : "확인된 이력"));
+                const actions = cell();
+                ["수정", "삭제"].forEach((label) => {
+                    const button = Common.dom.element("button", { text: label, className: "button button-secondary button-small", type: "button" });
+                    button.disabled = Boolean(locked) || (label === "삭제" && historyItems.length <= 1);
+                    button.addEventListener("click", async () => {
+                        if (historyBusy) return;
+                        if (label === "삭제") { await saveHistory(null, item); return; }
+                        if (historyDirty && !(await Common.ui.confirm("입력 중인 이력을 버리고 다른 이력을 수정할까요?"))) return;
+                        editHistory(item); query("#adminUsersHistoryFrom").focus();
+                    }, { signal: controller.signal });
+                    actions.append(button);
+                });
+                if (locked) actions.append(document.createTextNode(" 마감 보존"));
+                tr.append(actions); query("#adminUsersHistoryRows").append(tr);
+            });
+            editHistory(); query("#adminUsersHistoryForm").inert = false;
+            historyStatus(result.lastClosedMonth ? `${result.lastClosedMonth}까지 마감된 이력은 변경할 수 없습니다.` : "이력 적용일을 기준으로 사업부·고용형태별 실적을 계산합니다.");
+        } catch (error) { if (seq === historySequence && error.name !== "AbortError") historyStatus(error.message || "이력 조회 실패", "error"); }
+    }
+
+    async function saveHistory(event, deletion = null) {
+        event?.preventDefault();
+        if (historyBusy || !selectedUserId) return;
+        if (profileSnapshot() !== profileBaseline) { historyStatus("위 임직원 기본정보의 변경사항을 먼저 저장해 주세요.", "error"); return; }
+        const id = selectedUserId;
+        if (deletion && !(await Common.ui.confirm(`${deletion.effective_from} 이력을 삭제할까요? 이전 이력의 적용기간이 연장됩니다.`))) return;
+        if (id !== selectedUserId) return;
+        historyBusy = true; query("#userEditorPanel").inert = true;
+        try {
+            const base = `/admin/users/${encodeURIComponent(id)}/history`;
+            if (deletion) await Common.api.request(`${base}/${deletion.effective_from}?versionToken=${encodeURIComponent(deletion.version_token)}`, { method: "DELETE", signal: controller.signal });
+            else await Common.api.request(`${base}${historyEditing ? `/${historyEditing.effective_from}` : ""}`, { method: historyEditing ? "PUT" : "POST", signal: controller.signal, body: {
+                effectiveFrom: query("#adminUsersHistoryFrom").value, department: query("#adminUsersHistoryDept").value,
+                employmentType: query("#adminUsersHistoryType").value, employmentStatus: query("#adminUsersHistoryState").value,
+                hireDate: query("#adminUsersHistoryHire").value || null, retirementDate: query("#adminUsersHistoryRetire").value || null,
+                versionToken: historyEditing?.version_token || null
+            } });
+            historyDirty = false;
+            if (root && id === selectedUserId) { await loadUsers({ historySaved: true }); Common.ui.toast("소속·고용 이력을 반영했습니다.", "success"); }
+        } catch (error) { if (error.name !== "AbortError") historyStatus(error.message || "이력 처리 실패", "error"); }
+        finally { historyBusy = false; if (root) query("#userEditorPanel").inert = false; }
     }
 
     function updateSelectedRow() {
@@ -194,14 +273,11 @@
         });
     }
 
-    function selectUser(row) {
+    async function selectUser(row) {
+        if (historyBusy) return;
+        if (historyDirty && !(await Common.ui.confirm("입력 중인 이력을 버리고 이동할까요?"))) return;
         fillUserForm(row);
-        if (window.matchMedia("(max-width: 760px)").matches) {
-            query("#userEditorPanel")?.scrollIntoView({
-                behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-                block: "start"
-            });
-        }
+        Common.ui.revealEditor(query("#userEditorPanel"));
     }
 
     function renderUsers() {
@@ -290,6 +366,8 @@
     }
 
     async function loadUsers(options = {}) {
+        if (historyBusy && !options.historySaved) return;
+        if (historyDirty && !(await Common.ui.confirm("입력 중인 이력을 버리고 목록을 조회할까요?"))) return;
         if (options.resetPage) userPage = 1;
         const status = query("#userListStatus");
         Common.ui.setInlineStatus(status, "임직원 목록을 불러오고 있습니다.");
@@ -349,6 +427,7 @@
             birthDate: query("#userBirthDate").value || null,
             birthCalendarCode: query("#userBirthCalendarCode").value,
             hireDate: query("#userHireDate").value || null,
+            profileEffectiveDate: query("#userProfileEffectiveDate").value || null,
             retirementDate: query("#userRetirementDate").value || null,
             employmentStatusCode: query("#userEmploymentStatusCode").value,
             employmentTypeCode: query("#userEmploymentTypeCode").value || null,
@@ -385,6 +464,11 @@
 
     async function saveUser(event) {
         event.preventDefault();
+        if (historyBusy) return;
+        if (historyDirty) {
+            Common.ui.setInlineStatus(query("#userEditorStatus"), "입력 중인 이력을 저장하거나 ‘새 이력 입력’으로 취소한 뒤 기본정보를 저장해 주세요.", "error");
+            return;
+        }
         const form = event.currentTarget;
         if (!validateUserForm(form)) return;
         const id = query("#userId").value;
@@ -595,6 +679,18 @@
             root = context.root;
             controller = new AbortController();
             await loadDepartmentConfig();
+            query("#adminUsersHistoryJump").addEventListener("click", () => Common.ui.revealEditor(query("#adminUsersHistoryPanel")), { signal: controller.signal });
+            const today = new Date();
+            query("#adminUsersHistoryFrom").max = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+            const options = (selector, entries) => entries.forEach(([code, label]) => query(selector).append(Common.dom.element("option", { text: label, attrs: { value: code } })));
+            options("#adminUsersHistoryDept", [["UNASSIGNED", "미지정"], ...departments.map((d) => [d.code, d.label])]);
+            options("#adminUsersHistoryType", Object.entries(EMPLOYMENT_TYPE_LABELS));
+            options("#adminUsersHistoryState", Object.entries(EMPLOYMENT_STATUS_LABELS));
+            query("#adminUsersHistoryForm").addEventListener("submit", saveHistory, { signal: controller.signal });
+            query("#adminUsersHistoryForm").addEventListener("input", () => { historyDirty = true; }, { signal: controller.signal });
+            query("#adminUsersHistoryNew").addEventListener("click", async () => {
+                if (!historyDirty || await Common.ui.confirm("입력 중인 이력을 버리고 새로 입력할까요?")) editHistory();
+            }, { signal: controller.signal });
             query("#userSearchForm")?.addEventListener("submit", (event) => {
                 event.preventDefault();
                 loadUsers({ resetPage: true });
@@ -620,11 +716,15 @@
                 event.preventDefault();
                 selectUser(row);
             }, { signal: controller.signal });
-            query("#newUserButton")?.addEventListener("click", () => {
+            query("#newUserButton")?.addEventListener("click", async () => {
+                if (historyBusy) return;
+                if (historyDirty && !(await Common.ui.confirm("입력 중인 이력을 버리고 새로 입력할까요?"))) return;
                 fillUserForm();
                 query("#userLoginId")?.focus();
             }, { signal: controller.signal });
-            query("#clearUserButton")?.addEventListener("click", () => {
+            query("#clearUserButton")?.addEventListener("click", async () => {
+                if (historyBusy) return;
+                if (historyDirty && !(await Common.ui.confirm("입력 중인 이력을 버리고 새로 입력할까요?"))) return;
                 fillUserForm();
                 query("#userLoginId")?.focus();
             }, { signal: controller.signal });
@@ -690,7 +790,10 @@
             await loadUsers();
         },
 
+        hasUnsavedChanges() { return historyDirty; },
+        async beforeLeave() { if (historyBusy) return false; return !historyDirty || await Common.ui.confirm("입력 중인 이력을 버리고 이동할까요?"); },
         destroy() {
+            historySequence++; historyItems = []; historyEditing = null; historyDirty = false; historyBusy = false;
             photoPreviewRequestId += 1;
             controller?.abort();
             controller = null;

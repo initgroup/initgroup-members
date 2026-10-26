@@ -22,7 +22,11 @@ SELECT COUNT(*) AS TOTAL_COUNT
         OR UPPER(P.PROJECT_NAME) LIKE :keyword ESCAPE '\'
         OR UPPER(P.CUSTOMER_NAME) LIKE :keyword ESCAPE '\'
        )
-   AND (:statusCode = 'ALL' OR P.STATUS_CODE = :statusCode)
+   AND (
+        :statusCode = 'ALL' OR P.STATUS_CODE = :statusCode
+        OR (:statusCode = 'PRE_CONTRACT' AND P.STATUS_CODE IN ('PLANNED', 'BIDDING'))
+        OR (:statusCode = 'POST_CONTRACT' AND P.STATUS_CODE IN ('CONTRACTED', 'IN_PROGRESS', 'COMPLETED'))
+       )
    AND (
         :participationTypeCode = 'ALL'
         OR P.PARTICIPATION_TYPE_CODE = :participationTypeCode
@@ -72,7 +76,11 @@ SELECT P.PROJECT_ID
         OR UPPER(P.PROJECT_NAME) LIKE :keyword ESCAPE '\'
         OR UPPER(P.CUSTOMER_NAME) LIKE :keyword ESCAPE '\'
        )
-   AND (:statusCode = 'ALL' OR P.STATUS_CODE = :statusCode)
+   AND (
+        :statusCode = 'ALL' OR P.STATUS_CODE = :statusCode
+        OR (:statusCode = 'PRE_CONTRACT' AND P.STATUS_CODE IN ('PLANNED', 'BIDDING'))
+        OR (:statusCode = 'POST_CONTRACT' AND P.STATUS_CODE IN ('CONTRACTED', 'IN_PROGRESS', 'COMPLETED'))
+       )
    AND (
         :participationTypeCode = 'ALL'
         OR P.PARTICIPATION_TYPE_CODE = :participationTypeCode
@@ -142,6 +150,7 @@ SELECT P.PROJECT_ID
      , P.BID_DATE
      , P.STATUS_CODE
      , P.DESCRIPTION
+     , P.DEPARTMENT_CODE
      , P.CREATED_BY
      , CU.USER_NAME AS CREATED_BY_NAME
      , P.CREATED_AT
@@ -171,6 +180,7 @@ INSERT INTO "INIT$_TB_PROJECT" (
   , BID_DATE
   , STATUS_CODE
   , DESCRIPTION
+  , DEPARTMENT_CODE
   , CREATED_BY
   , CREATED_AT
 ) VALUES (
@@ -187,6 +197,7 @@ INSERT INTO "INIT$_TB_PROJECT" (
   , :bidDate
   , :statusCode
   , :description
+  , :departmentCode
   , :userId
   , SYSTIMESTAMP
 )
@@ -208,6 +219,7 @@ UPDATE "INIT$_TB_PROJECT"
      , BID_DATE = :bidDate
      , STATUS_CODE = :statusCode
      , DESCRIPTION = :description
+     , DEPARTMENT_CODE = :departmentCode
      , UPDATED_BY = :userId
      , UPDATED_AT = SYSTIMESTAMP
  WHERE PROJECT_ID = :projectId

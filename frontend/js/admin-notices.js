@@ -167,15 +167,7 @@
             if (requestId !== detailRequestId) return;
             fillForm(Common.data.get(payload) || {});
             await loadAttachments(id);
-            if (window.matchMedia("(max-width: 1024px)").matches) {
-                const editor = query("#noticeEditorTitle");
-                editor?.setAttribute("tabindex", "-1");
-                editor?.closest(".panel")?.scrollIntoView({
-                    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-                    block: "start"
-                });
-                editor?.focus({ preventScroll: true });
-            }
+            Common.ui.revealEditor(query("#noticeEditorTitle")?.closest(".panel"));
         } catch (error) {
             if (requestId !== detailRequestId) return;
             if (error?.name !== "AbortError") {

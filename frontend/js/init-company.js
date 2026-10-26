@@ -35,7 +35,7 @@
     }
 
     function clearHistory() { query("#initHistoryForm").reset(); query("#initHistoryId").value = ""; query("#initHistoryDate").value = new Date().toISOString().slice(0, 10); query("#deleteInitHistoryButton").hidden = true; }
-    function fillHistory(history) { query("#initHistoryId").value = value(history, "companyHistoryId", "COMPANY_HISTORY_ID"); query("#initHistoryDate").value = dateValue(value(history, "historyDate", "HISTORY_DATE")); query("#initHistoryType").value = value(history, "historyTypeCode", "HISTORY_TYPE_CODE") || "OTHER"; query("#initHistoryTitleInput").value = value(history, "title", "TITLE") || ""; query("#initHistoryContent").value = value(history, "content", "CONTENT") || ""; query("#deleteInitHistoryButton").hidden = false; }
+    function fillHistory(history) { query("#initHistoryId").value = value(history, "companyHistoryId", "COMPANY_HISTORY_ID"); query("#initHistoryDate").value = dateValue(value(history, "historyDate", "HISTORY_DATE")); query("#initHistoryType").value = value(history, "historyTypeCode", "HISTORY_TYPE_CODE") || "OTHER"; query("#initHistoryTitleInput").value = value(history, "title", "TITLE") || ""; query("#initHistoryContent").value = value(history, "content", "CONTENT") || ""; query("#deleteInitHistoryButton").hidden = false; Common.ui.revealEditor(query("#initHistoryForm")); }
 
     async function loadData() {
         const payload = await Common.api.request("/admin/companies/headquarters", { signal: controller.signal, showLoading: false }); const data = Common.data.get(payload) || {};
@@ -55,6 +55,11 @@
             query("#initCompanyForm").addEventListener("submit", (event) => saveCompany(event).catch((error) => Common.ui.setInlineStatus(query("#initCompanyStatus"), error.message, "error")), { signal: controller.signal });
             query("#initHistoryForm").addEventListener("submit", (event) => saveHistory(event).catch((error) => Common.ui.setInlineStatus(query("#initHistoryStatus"), error.message, "error")), { signal: controller.signal });
             query("#initHistoryTableBody").addEventListener("click", (event) => { const id = event.target.closest("tr[data-history-id]")?.dataset.historyId; const history = histories.find((item) => String(value(item, "companyHistoryId", "COMPANY_HISTORY_ID")) === id); if (history) fillHistory(history); }, { signal: controller.signal });
+            query("#initHistoryTableBody").addEventListener("keydown", (event) => {
+                if (!["Enter", " "].includes(event.key)) return;
+                const row = event.target.closest("tr[data-history-id]");
+                if (row) { event.preventDefault(); row.click(); }
+            }, { signal: controller.signal });
             query("#newInitHistoryButton").addEventListener("click", clearHistory, { signal: controller.signal }); query("#clearInitHistoryButton").addEventListener("click", clearHistory, { signal: controller.signal });
             query("#deleteInitHistoryButton").addEventListener("click", () => deleteHistory().catch((error) => Common.ui.setInlineStatus(query("#initHistoryStatus"), error.message, "error")), { signal: controller.signal });
             await loadData();

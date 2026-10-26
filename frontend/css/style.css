@@ -573,29 +573,32 @@
 /* Executive business dashboard */
 .executive-home {
     display: grid;
-    gap: 20px;
+    gap: 12px;
 }
 
-.executive-home-header {
-    align-items: flex-end;
+.page-header.executive-home-header {
+    align-items: center;
+    margin-bottom: 0;
 }
 
 .executive-home-actions {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: flex-end;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
 }
 
 .executive-year-field {
-    min-width: 130px;
+    min-width: 100px;
 }
 
 .executive-home-actions .home-updated-at {
-    flex-basis: 100%;
+    font-size: 0.7rem;
     text-align: right;
 }
+
+.executive-home-actions .button, .executive-year-field .select { min-height: 34px; padding: 6px 10px; font-size: 0.8rem; }
 
 .executive-scenario-badge {
     display: inline-flex;
@@ -638,16 +641,18 @@
 
 .executive-kpi-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
     gap: 12px;
 }
 
 .executive-kpi-card {
     position: relative;
     display: grid;
-    gap: 7px;
-    min-height: 142px;
-    padding: 20px;
+    grid-template-rows: auto auto 1fr;
+    min-width: 0;
+    gap: 5px;
+    min-height: 146px;
+    padding: 14px;
     overflow: hidden;
     border: 1px solid var(--color-border);
     border-radius: 16px;
@@ -667,6 +672,8 @@
     background: #6366f1;
 }
 
+.executive-kpi-card.is-target::before { background: #7c3aed; }
+
 .executive-kpi-card.is-sales::before {
     background: #0891b2;
 }
@@ -685,24 +692,43 @@
     font-weight: 800;
 }
 
-.executive-kpi-card > strong {
+.executive-kpi-card > strong,
+.executive-kpi-card > .executive-kpi-value {
     align-self: center;
     color: #0f2942;
-    font-size: clamp(1.35rem, 1.7vw, 2rem);
+    font-size: clamp(1.25rem, 1.5vw, 1.85rem);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.04em;
+    min-width: 0;
+    white-space: nowrap;
 }
+
+.executive-kpi-value { display: inline; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 800; text-align: left; cursor: pointer; white-space: nowrap; }
+.executive-kpi-value:hover { text-decoration: underline; text-underline-offset: 5px; }
+.executive-kpi-value:focus-visible, .executive-trend-bar:focus-visible { outline: 3px solid #7c3aed; outline-offset: 3px; }
+.executive-kpi-card small.is-incomplete { color: #a34216; font-weight: 700; }
 
 .executive-kpi-card > strong em {
     color: #94a3b8;
     font-style: normal;
 }
 
-.executive-kpi-card > small {
+.executive-kpi-card > small, .executive-kpi-meta {
     align-self: end;
     color: #64748b;
     font-size: 0.7rem;
 }
+
+.executive-kpi-card small { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.7rem; }
+.executive-kpi-card > .executive-kpi-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; white-space: nowrap; font-size: 0.68rem; }
+.executive-kpi-heading small { font-weight: 600; }
+.executive-kpi-breakdown { display: grid; align-self: end; gap: 3px; margin: 0; color: #64748b; font-size: 0.69rem; }
+.executive-kpi-breakdown > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px; align-items: center; }
+.executive-kpi-breakdown dt { white-space: nowrap; }
+.executive-kpi-breakdown dd { min-width: 0; margin: 0; text-align: right; white-space: nowrap; color: #334155; }
+.executive-kpi-detail { border: 0; padding: 0; max-width: 100%; background: transparent; color: inherit; font: inherit; white-space: nowrap; cursor: pointer; }
+.executive-kpi-detail:hover { text-decoration: underline; }
+.executive-kpi-meta .executive-kpi-breakdown { margin-top: 5px; }
 
 .executive-dashboard-grid {
     display: grid;
@@ -713,6 +739,18 @@
 .executive-panel-header {
     align-items: flex-start;
 }
+
+.panel.executive-annual-panel {
+    min-width: 0;
+    padding: 16px 18px;
+}
+
+.executive-chart-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.executive-chart-toolbar h3 { margin: 0; font-size: 1rem; }
+.executive-chart-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.executive-chart-controls .button { min-height: 28px; padding: 4px 9px; font-size: 0.75rem; line-height: 1.3; }
+.executive-revenue-check { color: #9a3412; border-color: #fed7aa; background: #fff7ed; }
+.executive-chart-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-top: 8px; }
 
 .executive-chart-legend {
     display: flex;
@@ -740,60 +778,141 @@
     background: #10b981;
 }
 
-.executive-monthly-chart {
+.dialog.detail-layer { width: min(1080px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow: hidden; }
+.dialog.detail-layer[open] { display: flex; flex-direction: column; }
+.detail-layer .dialog-header { cursor: move; touch-action: none; user-select: none; }
+.detail-layer .dialog-header > div { min-width: 0; }
+.detail-layer .dialog-header h3:focus { outline: none; }
+.detail-layer .dialog-header p { margin: 6px 0 0; max-width: 900px; line-height: 1.6; color: var(--color-muted); }
+.detail-layer-body { min-width: 0; min-height: 0; overflow: auto; padding: 18px; }
+.detail-layer-count { color: var(--color-muted); margin: 10px 0; }
+.detail-layer-groups { display: grid; gap: 12px; }
+.detail-layer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.detail-layer-group { min-width: 0; border: 1px solid #d6e3ed; border-radius: 12px; padding: 14px; background: #fff; overflow-wrap: anywhere; }
+.detail-layer-group > summary { font-weight: 800; cursor: pointer; line-height: 1.6; }
+.detail-layer-group.is-danger > summary { color: #a53d13; }
+.detail-layer-reasons { padding: 12px 12px 12px 30px; margin: 14px 0; background: #f4f8fc; border-radius: 8px; line-height: 1.8; }
+.detail-layer-group.is-danger .detail-layer-reasons { background: #fff5e9; }
+.detail-layer-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 16px 0; }
+.detail-layer-facts dt { color: var(--color-muted); font-size: 0.78rem; }
+.detail-layer-facts dd { margin: 5px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.detail-layer .data-table td { white-space: normal; overflow-wrap: anywhere; min-width: 85px; }
+.detail-layer .data-table td:first-child { min-width: 180px; }
+.detail-layer .dialog-header, .detail-layer .dialog-footer { flex: 0 0 auto; }
+.detail-layer .dialog-footer { flex-wrap: wrap; }
+.workforce-detail-trigger { cursor: pointer; }
+.workforce-detail-trigger:hover, .workforce-detail-trigger:focus-visible { outline: 2px solid #119c91; outline-offset: -2px; }
+.workforce-management-metric-detail { padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; font: inherit; }
+.workforce-management-metric-detail:disabled { cursor: default; }
+
+.annual-targets .panel { margin-top: 20px; }
+.annual-targets-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.annual-targets-actions .field { min-width: 150px; }
+.annual-targets-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.annual-targets-kpis article { display: grid; gap: 14px; padding: 22px; background: #fff; border: 1px solid #d7e2ed; border-radius: 16px; }
+.annual-targets-kpis strong { font-size: 24px; overflow-wrap: anywhere; }
+.annual-targets-kpis span { color: #526886; font-weight: 700; }
+.annual-targets-report-controls { margin-top: 20px; align-items: center; }
+.annual-targets-notice { padding: 14px; background: #fff6df; color: #714915; border-radius: 10px; line-height: 1.7; }
+.admin-users-history-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
+.annual-targets-preview { display: flex; flex-wrap: wrap; gap: 18px 32px; padding: 18px; margin-top: 18px; background: #effaf7; border-radius: 12px; }
+.annual-targets-preview span { display: grid; gap: 8px; }
+.annual-targets-preview strong { font-size: 21px; }
+.annual-targets-note-field { flex: 1; }
+.annual-targets-saved-breakdown { color: #526886; margin: 14px 0; }
+.annual-targets .data-table { white-space: nowrap; }
+.annual-targets-money-input { min-width: 180px; text-align: right; font-variant-numeric: tabular-nums; }
+.admin-project-revenue-add { display: flex; align-items: end; gap: 10px; margin-top: 14px; }
+#adminProjectRevenueRows .input { min-width: 170px; }
+
+.admin-users-history { border-top: 1px solid #d7e2ed; margin-top: 28px; padding-top: 24px; }
+.admin-users-history .data-table { white-space: nowrap; }
+.annual-targets .data-table select { min-width: 160px; }
+.annual-targets .data-table small { display: block; color: #526886; }
+.annual-targets details { margin-top: 18px; }
+.annual-targets summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+
+.executive-annual-revenue-chart {
     display: grid;
-    grid-template-columns: repeat(12, minmax(38px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: stretch;
     gap: 8px;
-    min-height: 270px;
-    padding-top: 12px;
+    min-height: 220px;
+    padding-top: 6px;
 }
 
-.executive-monthly-chart > .dashboard-empty-state {
+.executive-annual-revenue-chart > .dashboard-empty-state {
     grid-column: 1 / -1;
 }
 
-.executive-month-column {
+.executive-trend-year {
     display: grid;
-    grid-template-rows: minmax(210px, 1fr) auto;
-    gap: 8px;
+    grid-template-rows: minmax(180px, 1fr) auto;
+    gap: 6px;
     min-width: 0;
     color: #64748b;
     font-size: 0.68rem;
-    font-weight: 800;
+    font-weight: 700;
     text-align: center;
 }
 
-.executive-month-bars {
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 2px;
-    min-height: 210px;
-    padding: 8px 4px 0;
-    border-bottom: 1px solid #dbe4ee;
+.executive-trend-bars {
+    position: relative;
+    min-height: 180px;
     background-image: linear-gradient(to bottom, #edf2f7 1px, transparent 1px);
     background-size: 100% 25%;
 }
 
-.executive-month-bar {
-    width: 26%;
-    min-height: 0;
-    height: var(--executive-bar-height);
+.executive-trend-bars::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--trend-zero);
+    border-top: 1px solid #94a3b8;
+    pointer-events: none;
+}
+
+.executive-trend-bar {
+    position: absolute;
+    bottom: var(--trend-bottom);
+    left: var(--trend-left);
+    width: 21%;
+    min-height: 2px;
+    height: var(--trend-height);
+    padding: 0;
+    border: 0;
     border-radius: 4px 4px 1px 1px;
-    background: #0ea5e9;
+    cursor: pointer;
 }
 
-.executive-month-bar.is-cost {
-    background: #94a3b8;
+.executive-trend-bar.is-target { background: #7c3aed; }
+.executive-trend-bar.is-sales { background: #0ea5e9; }
+.executive-trend-bar.is-profit { background: #10b981; }
+.executive-trend-bar.is-loss { background: #dc2626; border-radius: 1px 1px 4px 4px; }
+.executive-trend-bar.is-unregistered { background: #cbd5e1; border: 1px dashed #64748b; }
+.executive-trend-zero { position: absolute; left: 0; bottom: var(--trend-zero); font-size: 0.6rem; color: #64748b; }
+
+.executive-sales-total { margin: 0; color: #64748b; font-size: 0.68rem; line-height: 1.5; }
+.executive-chart-legend .is-target::before { background: #7c3aed; }
+.executive-chart-legend .is-profit::before { background: #10b981; }
+
+.executive-revenue-details {
+    margin-top: 6px;
+    color: var(--color-muted);
+    font-size: 0.82rem;
 }
 
-.executive-month-bar.is-profit {
-    background: #10b981;
+.executive-revenue-details summary {
+    padding: 4px 0;
+    cursor: pointer;
+    font-weight: 700;
 }
 
-.executive-month-bar.is-negative {
-    background: #ef4444;
+.executive-annual-revenue-chart > .dashboard-empty-state p {
+    max-width: 620px;
+    margin: 10px auto;
+    line-height: 1.6;
 }
 
 .executive-risk-list {
@@ -806,6 +925,9 @@
 
 .executive-risk-item {
     display: grid;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
     gap: 3px;
     padding: 12px 13px;
     border: 1px solid #fed7aa;
@@ -952,11 +1074,8 @@
     margin-top: 0;
 }
 
-@media (max-width: 1620px) {
-    .executive-kpi-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
+@media (max-width: 1200px) {
+    .executive-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .executive-dashboard-grid,
     .executive-lower-grid {
         grid-template-columns: 1fr;
@@ -990,8 +1109,8 @@
         padding: 16px;
     }
 
-    .executive-monthly-chart {
-        grid-template-columns: repeat(12, minmax(48px, 1fr));
+    .executive-annual-revenue-chart {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         overflow-x: auto;
     }
 
@@ -1299,18 +1418,19 @@ body.app-booting .app-boot-screen {
     background: rgb(148 163 184 / 0.12);
 }
 
-.nav-link[aria-current="page"] {
+.nav-link[aria-current="page"],
+.nav-link[aria-current="location"] {
     color: #fff;
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
     box-shadow: 0 10px 24px color-mix(in srgb, var(--color-primary) 28%, transparent);
 }
 
-.nav-link[data-visited="true"]:not([aria-current="page"]) {
+.nav-link[data-visited="true"]:not([aria-current]) {
     color: #e2e8f0;
     background: rgb(148 163 184 / 0.08);
 }
 
-.nav-link[data-visited="true"]:not([aria-current="page"])::after {
+.nav-link[data-visited="true"]:not([aria-current])::after {
     width: 7px;
     height: 7px;
     margin-left: auto;
@@ -4277,6 +4397,50 @@ body.auth-screen .page-host {
     backdrop-filter: blur(3px);
 }
 
+.admin-project-detail-dialog {
+    width: min(1120px, calc(100% - 28px));
+    overflow: hidden;
+}
+
+.admin-project-detail-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-project-detail-dialog > .dialog-header {
+    flex-shrink: 0;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+}
+
+.admin-project-dialog-content {
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.admin-project-dialog-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.admin-project-dialog-fields {
+    min-width: 0;
+    margin: 0;
+    padding: 20px;
+    border: 0;
+}
+
+.admin-project-dialog-fields > .panel + .panel {
+    margin-top: 16px;
+}
+
+.admin-project-detail-dialog > .dialog-footer {
+    flex-shrink: 0;
+}
+
 .dialog-header,
 .dialog-body,
 .dialog-footer {
@@ -5267,7 +5431,8 @@ body.auth-screen .page-host {
     font-size: 0.72rem;
 }
 
-.workforce-management-metrics strong {
+.workforce-management-metrics strong,
+.workforce-management-metrics .workforce-management-metric-detail {
     display: block;
     margin: 5px 0 3px;
     color: #102a45;
@@ -5329,8 +5494,17 @@ body.auth-screen .page-host {
     gap: 8px;
 }
 
+.workforce-management-alert-entry { min-width: 0; }
+.workforce-management-alert-entry:only-child { grid-column: 1 / -1; }
+.workforce-management-alerts .count-badge { border: 0; cursor: pointer; }
+
 .workforce-management-alert-item {
     display: flex;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
     min-width: 0;
     padding: 10px 11px;
     border-radius: 10px;
@@ -5342,7 +5516,7 @@ body.auth-screen .page-host {
     background: #fff0f0;
 }
 
-.workforce-management-alert-icon {
+.workforce-management-alert-item .workforce-management-alert-icon {
     display: grid;
     width: 22px;
     height: 22px;
@@ -5376,10 +5550,20 @@ body.auth-screen .page-host {
     line-height: 1.45;
 }
 
-.workforce-management-alert-more {
-    color: var(--color-muted);
-    font-size: 0.75rem;
-}
+.workforce-management-alert-item:hover, .executive-risk-item:hover { box-shadow: 0 0 0 2px #df892c; }
+.workforce-management-alert-item:focus-visible, .executive-risk-item:focus-visible { outline: 3px solid #0f766e; outline-offset: 3px; }
+.workforce-management-alert-item .workforce-management-alert-link { color: #0f766e; font-weight: 800; }
+.workforce-load-detail-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 14px; }
+.workforce-load-detail-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: #64748b; font-size: 0.78rem; }
+.workforce-load-detail-breadcrumb button { border: 0; padding: 3px 0; color: #0f766e; background: transparent; font: inherit; cursor: pointer; }
+.workforce-load-detail-breadcrumb button:hover { text-decoration: underline; }
+.workforce-load-detail-breadcrumb [aria-current] { color: #19334b; font-weight: 800; }
+.workforce-load-detail-origin { display: inline-block; margin: 0 0 8px; padding: 4px 9px; border-radius: 6px; background: #e8f5f2; color: #0f766e; font-size: 0.73rem; }
+.workforce-load-detail-toolbar .field { max-width: 180px; }
+.workforce-load-detail-months { display: grid; gap: 16px; min-width: 0; }
+.workforce-load-detail-month { min-width: 0; }
+.workforce-load-detail-month > summary { cursor: pointer; color: #9a3412; font-weight: 800; line-height: 1.7; }
+.workforce-load-detail-month .data-table { min-width: 720px; }
 
 .workforce-management-board {
     --workforce-label-width: 220px;
@@ -6280,25 +6464,32 @@ html.has-workforce-board-maximized {
 }
 
 .workforce-management-worker-row-identity {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
     min-width: 0;
 }
 
+.workforce-management-worker-row-info.is-person { justify-content: flex-start; gap: 8px; }
+
 .workforce-management-worker-row-name {
-    display: flex;
+    display: grid;
     min-width: 0;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 3px;
 }
+
+.workforce-management-worker-row-identity .workforce-management-worker-row-name > span { margin-top: 0; }
 
 .workforce-management-worker-row-name strong {
     min-width: 0;
 }
 
 .workforce-management-worker-row-info .workforce-management-worker-photo {
-    width: 48px;
-    height: 42px;
-    flex-basis: 48px;
+    width: 42px;
+    height: 44px;
+    flex-basis: 42px;
 }
 
 .workforce-management-worker-row-info .workforce-management-worker-photo > span {
@@ -6315,12 +6506,21 @@ html.has-workforce-board-maximized {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 5px;
 }
+
+.workforce-management-worker-row-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.workforce-management-worker-row-info .workforce-management-worker-row-footer > small { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .workforce-management-worker-row-footer .workforce-management-worker-detail-button {
     display: inline-block;
-    margin-top: 6px;
+    flex: 0 0 auto;
+    margin: 0;
+    min-height: 24px;
+    padding: 3px 5px;
+    line-height: 1.3;
+    font-size: 0.64rem;
+    white-space: nowrap;
 }
 
 .workforce-management-worker-row-info[draggable="true"] {
@@ -6349,6 +6549,45 @@ html.has-workforce-board-maximized {
     color: var(--color-primary-dark);
     font-size: 0.62rem;
     font-weight: 800;
+}
+
+.workforce-management-department-metrics {
+    display: grid;
+    gap: 5px;
+    margin: 9px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.68rem;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+}
+
+.workforce-management-department-metrics > div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 2px 6px;
+}
+
+.workforce-management-department-metrics dt {
+    color: var(--color-muted);
+}
+
+.workforce-management-department-metrics dd {
+    margin: 0 0 0 auto;
+    font-weight: 800;
+    text-align: right;
+}
+
+.workforce-management-department-metrics .has-overload {
+    padding: 3px 5px;
+    border-radius: 5px;
+    color: #9a3412;
+    background: #fff4e8;
+}
+
+.workforce-management-department-metrics .has-overload dt {
+    color: inherit;
 }
 
 .workforce-management-worker-month-cell {
@@ -6483,7 +6722,10 @@ html.has-workforce-board-maximized {
 
 .workforce-management-assignment-settings {
     display: grid;
-    width: 26px;
+    width: auto;
+    padding: 0 9px;
+    white-space: nowrap;
+    font-weight: 700;
     height: 26px;
     flex: 0 0 auto;
     border: 1px solid rgb(23 74 119 / 0.2);
@@ -6493,6 +6735,15 @@ html.has-workforce-board-maximized {
     cursor: pointer;
     place-items: center;
     font-size: 0.7rem;
+}
+
+.workforce-management-assignment-warning {
+    flex: 0 0 auto;
+    padding: 4px 6px;
+    color: #9a4d00;
+    border-color: #df892c;
+    font-size: 0.65rem;
+    white-space: nowrap;
 }
 
 .workforce-management-lane-info {
@@ -6514,6 +6765,78 @@ html.has-workforce-board-maximized {
     align-items: flex-start;
     justify-content: space-between;
     gap: 7px;
+}
+
+.workforce-management-summary-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.workforce-management-summary-toggle[hidden] {
+    display: none;
+}
+
+.workforce-management-summary-toggle .is-active {
+    border-color: var(--color-primary);
+    color: var(--color-primary-dark);
+    background: var(--color-primary-soft);
+}
+
+.workforce-management-project-toggle {
+    margin: 6px 0;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-primary-dark);
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.workforce-management-project-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+}
+
+.workforce-management-project-summary > span {
+    color: var(--color-muted);
+    font-size: 0.72rem;
+}
+
+.workforce-management-summary-month {
+    display: flex;
+    min-width: 0;
+    padding: 9px 3px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    border-right: 1px solid var(--color-border);
+    background: #f5fafb;
+    font-size: 0.73rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.workforce-management-summary-month small {
+    color: var(--color-muted);
+    font-size: 0.65rem;
+}
+
+.workforce-management-summary-month.has-overload {
+    color: #9a3412;
+    background: #fff4e8;
+}
+
+.workforce-management-summary-month.has-overload small:last-child {
+    color: #9a3412;
+    font-weight: 700;
 }
 
 .workforce-management-lane-title strong {
@@ -6610,9 +6933,12 @@ html.has-workforce-board-maximized {
     position: relative;
     z-index: 2;
     display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
     margin: 0 4px;
-    padding: 6px 36px 6px 8px;
+    padding: 6px 142px 6px 8px;
     align-self: start;
     border: 1px solid transparent;
     border-radius: 8px;
@@ -6629,28 +6955,26 @@ html.has-workforce-board-maximized {
     gap: 8px;
 }
 
-.workforce-management-assignment-person[data-worker-detail] {
-    margin: -2px;
-    padding: 2px;
-    border-radius: 6px;
+.workforce-management-assignment-name {
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    text-underline-offset: 2px;
     cursor: pointer;
-    transition: background-color 0.16s ease;
 }
 
-.workforce-management-assignment-person[data-worker-detail]:hover {
-    background: rgb(255 255 255 / 0.42);
-}
-
-.workforce-management-assignment-person[data-worker-detail]:hover > .workforce-management-assignment-person-copy > strong,
-.workforce-management-assignment-person[data-worker-detail]:hover > .workforce-management-assignment-person-copy > small,
-.workforce-management-assignment-person[data-worker-detail]:focus-visible > .workforce-management-assignment-person-copy > strong,
-.workforce-management-assignment-person[data-worker-detail]:focus-visible > .workforce-management-assignment-person-copy > small {
+.workforce-management-assignment-name:hover {
     color: var(--color-primary-dark);
     text-decoration: underline;
-    text-underline-offset: 2px;
 }
 
-.workforce-management-assignment-person[data-worker-detail]:focus-visible {
+.workforce-management-assignment-name:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
 }
@@ -6694,19 +7018,11 @@ html.has-workforce-board-maximized {
     white-space: nowrap;
 }
 
-.workforce-management-board.is-editing .workforce-management-assignment {
-    padding-right: 66px;
-}
-
 .workforce-management-assignment > .workforce-management-assignment-settings {
     position: absolute;
     top: 50%;
-    right: 5px;
-    transform: translateY(-50%);
-}
-
-.workforce-management-board.is-editing .workforce-management-assignment > .workforce-management-assignment-settings {
     right: 35px;
+    transform: translateY(-50%);
 }
 
 .workforce-management-assignment-remove {
@@ -6775,6 +7091,7 @@ html.has-workforce-board-maximized {
 }
 
 .workforce-management-assignment.is-pending-removal strong,
+.workforce-management-assignment.is-pending-removal .workforce-management-assignment-name,
 .workforce-management-assignment.is-pending-removal small {
     text-decoration: line-through;
     text-decoration-thickness: 2px;

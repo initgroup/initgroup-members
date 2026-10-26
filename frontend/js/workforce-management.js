@@ -21,11 +21,15 @@
     let scenarios = [];
     let scenario = null;
     let projectFilter = "all";
+    let boardBasis = "project-status";
     let editorEntry = null;
     let editorOpening = false;
     let establishmentYear = null;
     let boardView = "project";
     let projectSort = "start";
+    let projectDisplay = "summary";
+    let projectExpansion = new Map();
+    let workerDisplay = "individual";
     let departments = [];
     let workerTypeFilter = "";
     let workerNameFilter = "";
@@ -45,6 +49,7 @@
     let editRemovals = new Map();
     let activeBoardDrag = null;
     let renderCalculationCache = null;
+    let detailLayer = null;
 
     function query(selector) {
         return root?.querySelector(selector) || null;
@@ -391,7 +396,7 @@
             companyName: pick(worker, "companyName", "COMPANY_NAME") || "소속 미정",
             assignmentStartDate: startDate,
             assignmentEndDate: endDate,
-            assignmentStatusCode: lane.type === "planning" ? "PLANNED" : "CONFIRMED",
+            assignmentStatusCode: assignmentStatusCode(lane, {}),
             allocationTypeCode: "MONTHLY",
             defaultMm: 1,
             monthlyAllocations,
@@ -439,7 +444,7 @@
             scenarioProjectId: lane.scenarioProjectId,
             assignmentStartDate: startDate,
             assignmentEndDate: endDate,
-            assignmentStatusCode: lane.type === "planning" ? "PLANNED" : "CONFIRMED",
+            assignmentStatusCode: assignmentStatusCode(lane, {}),
             monthlyAllocations,
             totalMm: monthlyAllocations.length
         });
@@ -489,7 +494,7 @@
     }
 
     function boardRangeLanes() {
-        return projectScopedLanes().filter((lane) => projectFilter === "all" || lane.type === projectFilter);
+        return projectScopedLanes().filter((lane) => projectFilter === "all" || laneCategory(lane) === projectFilter);
     }
 
     function fullTimelineMonths() {
@@ -582,7 +587,8 @@
     }
 
     function confirmedLanes() {
-        return (confirmedData.projects || []).map((project) => {
+        // Stable "confirmed" identifiers refer to the registered storage, regardless of project phase.
+        return (confirmedData.projects || []).filter((project) => String(pick(project, "statusCode", "STATUS_CODE") || "").toUpperCase() !== "CANCELLED").map((project) => {
             const projectId = pick(project, "projectId", "PROJECT_ID");
             return {
                 type: "confirmed",
@@ -590,7 +596,7 @@
                 projectId,
                 name: pick(project, "projectName", "PROJECT_NAME") || "프로젝트명 미정",
                 customer: pick(project, "customerName", "CUSTOMER_NAME") || "고객사 미정",
-                status: pick(project, "statusCode", "STATUS_CODE") || "CONFIRMED",
+                status: pick(project, "statusCode", "STATUS_CODE") || "PLANNED",
                 startDate: pick(project, "projectStartDate", "PROJECT_START_DATE"),
                 endDate: pick(project, "projectEndDate", "PROJECT_END_DATE"),
                 amount: number(pick(project, "contractAmountVat", "CONTRACT_AMOUNT_VAT")),
@@ -675,7 +681,14 @@
     }
 
     function allLanes() {
-        return [...confirmedLanes(), ...planningLanes()];
+        // Retain the old comparison view so scenario-only allocations remain reviewable.
+        return boardBasis === "legacy-scenario" ? [...confirmedLanes(), ...planningLanes()] : confirmedLanes();
+    }
+
+    function laneCategory(lane) {
+        if (boardBasis === "legacy-scenario") return lane.type;
+        const status = String(lane.status || "").toUpperCase();
+        return ["CONTRACTED", "IN_PROGRESS", "COMPLETED"].includes(status) ? "confirmed" : "planning";
     }
 
     function projectScopedLanes() {
@@ -717,7 +730,7 @@
     function workerCompanyWarnings(worker) {
         return projectScopedLanes()
             .filter((lane) => lane.type === "confirmed")
-            .map((lane) => workerCompanyEligibility(lane, worker))
+            .map((lane) => ({ ...workerCompanyEligibility(lane, worker), lane }))
             .filter((result) => !result.valid);
     }
 
@@ -739,6 +752,72 @@
         return renderCalculationCache.lanes;
     }
 
+    function workerMonthlyCapacity(worker, month) {
+        const start = dateText(pick(worker, "availableStartDate", "AVAILABLE_START_DATE")).slice(0, 7);
+        const end = dateText(pick(worker, "availableEndDate", "AVAILABLE_END_DATE")).slice(0, 7);
+        return (!start || month >= start) && (!end || month <= end) ? 1 : 0;
+    }
+
+    function detailMm(value) {
+        return Number(value || 0).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 4 });
+    }
+
+    function loadDetailGroups({ workerKeys = null, months = null, scopeLanes = null, onlyWarnings = false, availableOnly = false, requireScopedAssignment = false } = {}) {
+        const lanes = allLanes();
+        const workers = new Map(referenceWorkers(lanes).map((worker) => [worker.workerKey, worker]));
+        const { capacity } = allocationState(lanes);
+        const keys = workerKeys ? new Set(workerKeys) : new Set(workers.keys());
+        const monthKeys = months || timelineMonths();
+        const scope = new Set((scopeLanes || lanes).map((lane) => lane.key));
+        const groups = [];
+        keys.forEach((key) => monthKeys.forEach((month) => {
+            const worker = workers.get(key) || { workerKey: key };
+            const item = capacity.get(`${key}|${month}`) || { employeeName: employeeName(worker), totalMm: 0, projects: new Map(), assignments: [] };
+            const limit = workerMonthlyCapacity(worker, month);
+            const total = item.totalMm;
+            const overloaded = total > 1 + 0.000001;
+            if (onlyWarnings && !overloaded) return;
+            if (availableOnly && total >= limit - 0.000001) return;
+            const allocations = item.assignments || [];
+            if (requireScopedAssignment && !allocations.some((a) => scope.has(a.laneKey))) return;
+            const reasons = [];
+            if (overloaded) reasons.push(`전체 프로젝트 투입 ${detailMm(total)} M/M이 월 중복 판정 기준 1.0 M/M을 ${detailMm(total - 1)} M/M 초과했습니다.`);
+            if (!limit) reasons.push(`해당 월은 등록된 가용기간(${dateText(pick(worker, "availableStartDate", "AVAILABLE_START_DATE")) || "시작 제한 없음"} ~ ${dateText(pick(worker, "availableEndDate", "AVAILABLE_END_DATE")) || "종료 제한 없음"}) 밖이므로 가용량이 0 M/M입니다.`);
+            if (item.projects.size > 1) {
+                reasons.push(`같은 달 ${item.projects.size}개 프로젝트의 투입을 합산했습니다.`);
+                if (!overloaded) reasons.push("합계가 1.0 M/M 이하인 정상 분할 투입입니다. 중복 알림 대상이 아닙니다.");
+            }
+            if (allocations.length > item.projects.size) reasons.push("같은 프로젝트의 여러 배치 행을 각각 합산했습니다. 배치 번호와 기간을 확인해 주세요.");
+            const hidden = allocations.filter((a) => !scope.has(a.laneKey));
+            if (hidden.length) reasons.push(`현재 조회에서 숨겨진 프로젝트의 ${detailMm(hidden.reduce((n, a) => n + a.mm, 0))} M/M도 과부하 판정에 포함했습니다.`);
+            if (!overloaded && item.projects.size <= 1) reasons.push(total ? "합산 투입이 1.0 M/M 이하이므로 중복 알림 대상이 아닙니다." : "해당 월에 등록된 투입이 없습니다.");
+            groups.push({ title: `${item.employeeName || employeeName(worker)} · ${month} · ${overloaded ? "1 M/M 초과" : "투입·가용 상세"}`,
+                severity: overloaded ? "danger" : "info", reasons,
+                facts: [["전체 투입",`${detailMm(total)} M/M`],["중복 판정 기준","1.0 M/M"],["기간 가용량",`${detailMm(limit)} M/M`],["초과량",`${detailMm(Math.max(0,total-1))} M/M`],
+                    ["잔여 가용",`${detailMm(Math.max(0,limit-total))} M/M`],["프로젝트",`${item.projects.size}개`]],
+                columns: ["프로젝트","구분","투입기간","해당 월 M/M","배치 번호","저장 상태","조회 범위"],
+                rows: allocations.map((a) => [a.projectName,a.phase === "confirmed" ? "확정" : "계획",`${a.startDate || "—"} ~ ${a.endDate || "—"}`,detailMm(a.mm),a.identity,a.source,scope.has(a.laneKey) ? "현재 조회" : "필터 밖 포함"])
+            });
+        }));
+        return groups.sort((a,b) => (a.severity === "danger" ? -1 : 0) - (b.severity === "danger" ? -1 : 0) || a.title.localeCompare(b.title,"ko"));
+    }
+
+    function openLoadDetails(options = {}) {
+        detailLayer.open({ title: options.title || "투입·과부하·중복 상세", description: "같은 달 전체 프로젝트 합계가 1.0 M/M을 초과할 때 중복·과부하로 알립니다. 0.5 + 0.5처럼 합계가 1.0 이하면 정상입니다. 필터 밖 프로젝트와 미저장 변경도 합산합니다.",
+            groups: loadDetailGroups(options) });
+    }
+
+    function detailTrigger(node, options) {
+        node.classList.add("workforce-detail-trigger");
+        node.setAttribute("role","button"); node.tabIndex=0;
+        node.setAttribute("aria-haspopup","dialog");
+        node.setAttribute("aria-label",`${node.title || node.textContent} · 상세 사유와 대상 보기`);
+        node.title=`${node.title || node.textContent} · 클릭하면 상세 사유와 대상을 확인합니다.`;
+        const open = (event) => { event.preventDefault(); event.stopPropagation(); openLoadDetails(typeof options === "function" ? options() : options); };
+        node.addEventListener("click",open,{signal:controller.signal});
+        node.addEventListener("keydown",(event) => { if (["Enter"," "].includes(event.key)) open(event); },{signal:controller.signal});
+    }
+
     function allocationState(lanes = null) {
         const useDefaultLanes = lanes === null;
         if (useDefaultLanes && renderCalculationCache?.allocationState) {
@@ -746,11 +825,13 @@
         }
         const resolvedLanes = useDefaultLanes ? defaultCalculationLanes() : lanes;
         const capacity = new Map();
+        const workers = new Map(referenceWorkers(resolvedLanes).map((worker) => [worker.workerKey, worker]));
         resolvedLanes.forEach((lane) => {
             boardAssignments(lane).forEach((assignment) => {
                 if (isPendingRemoval(assignmentIdentity(lane, assignment))) return;
                 const key = workerKey(assignment);
                 assignmentAllocations(assignment).forEach((allocation) => {
+                    if (allocation.mm <= 0) return;
                     const capacityKey = `${key}|${allocation.month}`;
                     if (!capacity.has(capacityKey)) {
                         capacity.set(capacityKey, {
@@ -758,21 +839,24 @@
                             employeeName: employeeName(assignment),
                             month: allocation.month,
                             totalMm: 0,
+                            capacityMm: workerMonthlyCapacity(workers.get(key) || assignment, allocation.month),
+                            assignments: [],
                             projects: new Map()
                         });
                     }
                     const item = capacity.get(capacityKey);
                     item.totalMm += allocation.mm;
-                    item.projects.set(lane.key, {
-                        projectId: lane.projectId,
-                        name: lane.name,
-                        type: lane.type
-                    });
+                    const project = item.projects.get(lane.key) || { projectId: lane.projectId, name: lane.name, type: laneCategory(lane), mm: 0 };
+                    project.mm += allocation.mm; item.projects.set(lane.key, project);
+                    item.assignments.push({ laneKey: lane.key, projectName: lane.name, phase: laneCategory(lane), mm: allocation.mm,
+                        startDate: dateText(pick(assignment,"assignmentStartDate","ASSIGNMENT_START_DATE")),
+                        endDate: dateText(pick(assignment,"assignmentEndDate","ASSIGNMENT_END_DATE")), identity: assignmentIdentity(lane,assignment),
+                        source: quickContext?.preview === assignment ? "설정 미리보기" : isEditDraft(assignment) ? "미저장 변경" : lane.type === "planning" ? "기존 계획안 참고" : "저장된 투입" });
                 });
             });
         });
         const warnings = Array.from(capacity.values())
-            .filter((item) => item.projects.size > 1)
+            .filter((item) => item.totalMm > 1 + 0.000001)
             .sort((left, right) => left.month.localeCompare(right.month) || left.employeeName.localeCompare(right.employeeName));
         const result = { capacity, warnings };
         if (useDefaultLanes && renderCalculationCache) {
@@ -796,6 +880,8 @@
                 companyName: pick(assignment, "companyName", "COMPANY_NAME") || "소속 미정",
                 departmentName: pick(assignment, "departmentName", "DEPARTMENT_NAME") || "",
                 departmentCode: pick(assignment, "departmentCode", "DEPARTMENT_CODE") || "",
+                availableStartDate: pick(assignment,"availableStartDate","AVAILABLE_START_DATE") || "",
+                availableEndDate: pick(assignment,"availableEndDate","AVAILABLE_END_DATE") || "",
                 workerTypeCode: key.startsWith("USER:") ? "INTERNAL" : "PARTNER"
             });
         }));
@@ -832,7 +918,7 @@
                 monthly,
                 availableMonths,
                 peakMm: Math.max(0, ...monthly.map((item) => item.totalMm)),
-                overlapCount: monthly.filter((item) => item.projects.size > 1).length
+                overloadCount: monthly.filter((item) => item.totalMm > 1 + 0.000001).length
             };
         });
         if (useDefaultLanes && renderCalculationCache) {
@@ -879,11 +965,11 @@
         const { warnings } = allocationState();
         const projectId = selectedProjectId();
         const visibleWarnings = warnings.filter((warning) => (
-            !projectId
-            || Array.from(warning.projects.values()).some((project) => String(project.projectId) === projectId)
+            warning.month.startsWith(`${selectedYear()}-`) && (!projectId
+            || Array.from(warning.projects.values()).some((project) => String(project.projectId) === projectId))
         ));
-        const confirmedCount = lanes.filter((lane) => lane.type === "confirmed").length;
-        const planningCount = lanes.filter((lane) => lane.type === "planning").length;
+        const confirmedCount = lanes.filter((lane) => laneCategory(lane) === "confirmed").length;
+        const planningCount = lanes.filter((lane) => laneCategory(lane) === "planning").length;
         const uniqueWorkers = new Set(assignments.map(workerKey));
         const availableWorkers = workers.filter((worker) => worker.availableMonths > 0).length;
         query("#workforceManagementProjectMetric").textContent = `${lanes.length}개`;
@@ -891,36 +977,65 @@
         query("#workforceManagementAssignmentMetric").textContent = `${uniqueWorkers.size}명 · ${assignments.length}건`;
         query("#workforceManagementAvailableMetric").textContent = `${availableWorkers}명`;
         query("#workforceManagementAvailableMetricNote").textContent = `${selectedYear()}년 중 1개월 이상 가용`;
-        query("#workforceManagementWarningMetric").textContent = `${visibleWarnings.length}건`;
+        query("#workforceManagementWarningMetric").textContent = `${Common.workload.groupOverloads(visibleWarnings).length}명`;
+        query("#workforceManagementWarningMetric").disabled = !visibleWarnings.length;
+        query("#workforceManagementProjectMetric").disabled = !lanes.length;
+        query("#workforceManagementAssignmentMetric").disabled = !uniqueWorkers.size;
+        query("#workforceManagementAvailableMetric").disabled = !availableWorkers;
+        [["Project","프로젝트 목록"],["Assignment","투입 인력·배치"],["Available","가용 인력"],["Warning","과부하·중복 알림"]].forEach(([id,label]) => {
+            const button=query(`#workforceManagement${id}Metric`);
+            button.setAttribute("aria-label",`${label} ${button.textContent} · 상세 사유와 대상 보기`);
+        });
+    }
+
+    function openMetricDetails(kind) {
+        if (kind === "warnings") { openWorkerLoadDetail(); return; }
+        const lanes=projectScopedLanes();
+        if (kind === "projects") {
+            detailLayer.open({title:"조회 프로젝트 목록",description:"현재 선택한 프로젝트 범위입니다. 프로젝트 상태로 계획·확정을 구분합니다.",groups:lanes.map((lane)=>({
+                title:lane.name,reasons:[`${statusLabel(lane)} 단계로 ${laneCategory(lane)==="confirmed"?"확정":"계획"} 투입으로 집계됩니다.`],
+                facts:[["기간",`${lane.startDate || "—"} ~ ${lane.endDate || "—"}`],["고객사",lane.customer || "—"]],
+                columns:["인력","투입 구분","투입기간","총 M/M"],rows:boardAssignments(lane).filter((a)=>!isPendingRemoval(assignmentIdentity(lane,a))).map((a)=>[employeeName(a),assignmentStatusLabel(lane,a),`${dateText(pick(a,"assignmentStartDate","ASSIGNMENT_START_DATE"))} ~ ${dateText(pick(a,"assignmentEndDate","ASSIGNMENT_END_DATE"))}`,fixed(pick(a,"totalMm","TOTAL_MM"))])
+            }))});
+            return;
+        }
+        const keys=kind==="assignments" ? new Set(lanes.flatMap((lane)=>boardAssignments(lane).filter((a)=>!isPendingRemoval(assignmentIdentity(lane,a))).map(workerKey))) : null;
+        const months=kind==="available" ? yearMonths() : [...new Set(allLanes().flatMap((lane)=>boardAssignments(lane).flatMap((a)=>assignmentAllocations(a).map((item)=>item.month))))].sort();
+        openLoadDetails({title:kind==="available"?"인력별 가용 근거":"조회 투입 인력·배치 상세",workerKeys:keys,months,
+            scopeLanes:lanes,availableOnly:kind==="available",requireScopedAssignment:kind==="assignments"});
+    }
+
+    function openCompanyWarningDetails(worker) {
+        detailLayer.open({title:`${employeeName(worker)} · 배치 제한 사유`,description:"소속회사 연결과 프로젝트 참여회사 등록을 비교한 결과입니다.",
+            groups:workerCompanyWarnings(worker).map((item)=>({title:item.lane.name,severity:"danger",reasons:[item.reason,"협력업체 관리의 소속회사 연결과 프로젝트의 참여회사 등록을 확인해 주세요."],
+                facts:[["인력",employeeName(worker)],["소속회사",pick(worker,"companyName","COMPANY_NAME") || "미지정"]],
+                columns:["프로젝트 참여회사","연결 회사 ID"],rows:laneCompanies(item.lane).map((company)=>[pick(company,"companyName","COMPANY_NAME") || "미지정",pick(company,"companyId","COMPANY_ID") || "연결 없음"])}))});
+    }
+
+    function openWorkerLoadDetail(workerKey = null) {
+        App.navigate("workforce-load-detail", {context:{planYear:selectedYear(),workerKey,projectId:selectedProjectId() || null,returnPage:"workforce-management"}});
     }
 
     function renderAlerts() {
-        const projectId = selectedProjectId();
-        const { warnings: allWarnings } = allocationState();
-        const warnings = allWarnings.filter((warning) => (
-            !projectId
-            || Array.from(warning.projects.values()).some((project) => String(project.projectId) === projectId)
-        ));
-        const panel = query("#workforceManagementAlerts");
-        const list = query("#workforceManagementAlertList");
-        list.replaceChildren();
-        panel.hidden = !warnings.length;
-        query("#workforceManagementAlertCount").textContent = `${warnings.length}건`;
-        warnings.slice(0, 4).forEach((warning) => {
-            const item = element("li", `workforce-management-alert-item${warning.totalMm > 1 ? " is-high" : ""}`);
-            const icon = element("span", "workforce-management-alert-icon", warning.totalMm > 1 ? "!" : "i");
-            icon.setAttribute("aria-hidden", "true");
-            const copy = element("div");
-            copy.append(
-                element("strong", "", `${warning.employeeName} · ${Number(warning.month.slice(5, 7))}월 · 합계 ${fixed(warning.totalMm)} M/M`),
-                element("span", "", Array.from(warning.projects.values()).map((project) => `${project.type === "confirmed" ? "확정" : "계획"} ${project.name}`).join(" / "))
-            );
-            item.append(icon, copy);
-            list.appendChild(item);
+        const projectId=selectedProjectId();
+        const warnings=allocationState().warnings.filter((warning)=>warning.month.startsWith(`${selectedYear()}-`) && (!projectId || [...warning.projects.values()].some((project)=>String(project.projectId)===projectId)));
+        const people=Common.workload.groupOverloads(warnings);
+        const panel=query("#workforceManagementAlerts"),list=query("#workforceManagementAlertList");
+        list.replaceChildren();panel.hidden=!people.length;
+        const months=people.reduce((sum,person)=>sum+person.months.length,0);
+        query("#workforceManagementAlertCount").textContent=`${people.length}명 · ${months}인·월`;
+        people.forEach((person)=>{
+            const item=element("li","workforce-management-alert-entry");
+            const button=element("button","workforce-management-alert-item is-high");button.type="button";
+            const icon=element("span","workforce-management-alert-icon","!");icon.setAttribute("aria-hidden","true");
+            const copy=element("div");
+            copy.append(element("strong","",`${person.employeeName} · 총 ${person.months.length}개월 초과투입`),
+                element("span","",Common.workload.monthList(person.months)),
+                element("span","",`최고 월 투입 ${detailMm(person.peakMm)} M/M · ${person.projectNames.join(" / ")}`),
+                element("span","workforce-management-alert-link","인력별 초과투입 상세 →"));
+            button.append(icon,copy);button.addEventListener("click",()=>openWorkerLoadDetail(person.workerKey),{signal:controller.signal});
+            item.appendChild(button);list.appendChild(item);
         });
-        if (warnings.length > 4) {
-            list.appendChild(element("li", "workforce-management-alert-more", `외 ${warnings.length - 4}건은 인력 카드의 월별 표시에서 확인할 수 있습니다.`));
-        }
     }
 
     function workerMatchesType(worker, type) {
@@ -978,7 +1093,7 @@
         const fragment = document.createDocumentFragment();
         workers.forEach((worker) => {
             const companyWarnings = workerCompanyWarnings(worker);
-            const card = element("article", `workforce-management-worker-card${worker.overlapCount ? " has-overlap" : ""}${companyWarnings.length ? " has-company-warning" : ""}`);
+            const card = element("article", `workforce-management-worker-card${worker.overloadCount ? " has-overlap" : ""}${companyWarnings.length ? " has-company-warning" : ""}`);
             card.dataset.workerKey = worker.workerKey;
             card.draggable = editMode;
             if (editMode) {
@@ -996,15 +1111,18 @@
                 nameRow,
                 element("span", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME"), pick(worker, "positionName", "POSITION_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음")
             );
-            const status = element("span", `workforce-management-worker-status${worker.overlapCount ? " is-overlap" : ""}`, worker.overlapCount ? `중복 ${worker.overlapCount}개월` : `가용 ${worker.availableMonths}개월`);
+            const status = element("span", `workforce-management-worker-status${worker.overloadCount ? " is-overlap" : ""}`, worker.overloadCount ? `1 M/M 초과 ${worker.overloadCount}개월` : `가용 ${worker.availableMonths}개월`);
+            detailTrigger(status,{workerKeys:[worker.workerKey],months:yearMonths(),onlyWarnings:Boolean(worker.overloadCount),availableOnly:!worker.overloadCount,title:`${employeeName(worker)} · 월별 투입 사유`});
             top.append(copy, status);
             const months = element("div", "workforce-management-worker-months");
             worker.monthly.forEach((item, index) => {
                 const cell = element("span", "", String(index + 1));
                 if (item.totalMm > 0) cell.classList.add("is-assigned");
                 if (item.totalMm >= 1) cell.classList.add("is-full");
-                if (item.projects.size > 1) cell.classList.add("is-overlap");
-                cell.setAttribute("aria-label", `${index + 1}월 ${fixed(item.totalMm)} M/M${item.projects.size > 1 ? ", 복수 프로젝트" : ""}`);
+                if (item.totalMm > 1 + 0.000001) cell.classList.add("is-overlap");
+                cell.setAttribute("aria-label", `${index + 1}월 ${fixed(item.totalMm)} M/M${item.totalMm > 1 + 0.000001 ? ", 1 M/M 초과" : ""}`);
+                cell.title=`${employeeName(worker)} · ${item.month} · ${fixed(item.totalMm)} M/M`;
+                detailTrigger(cell,{workerKeys:[worker.workerKey],months:[item.month]});
                 months.appendChild(cell);
             });
             const summary = element("small", "workforce-management-worker-summary", `최고 ${fixed(worker.peakMm)} M/M · 1.0 미만 ${worker.availableMonths}개월`);
@@ -1016,6 +1134,8 @@
             if (companyWarnings.length) {
                 const warning = element("small", "workforce-management-worker-company-warning", `⚠ 배치 불가 ${companyWarnings.length}개 프로젝트`);
                 warning.title = companyWarnings.map((item) => item.reason).join("\n");
+                warning.classList.add("workforce-detail-trigger"); warning.tabIndex=0; warning.setAttribute("role","button"); warning.setAttribute("aria-haspopup","dialog");
+                const open=()=>openCompanyWarningDetails(worker); warning.addEventListener("click",open,{signal:controller.signal}); warning.addEventListener("keydown",(event)=>{if(["Enter"," "].includes(event.key)){event.preventDefault();open();}},{signal:controller.signal});
                 card.appendChild(warning);
             }
             fragment.appendChild(card);
@@ -1030,9 +1150,9 @@
         if (palette.hidden) return;
         palette.appendChild(element("strong", "", "프로젝트를 인력의 월 셀로 끌어 배치"));
         projectScopedLanes()
-            .filter((lane) => projectFilter === "all" || lane.type === projectFilter)
+            .filter((lane) => projectFilter === "all" || laneCategory(lane) === projectFilter)
             .forEach((lane) => {
-                const chip = element("button", `workforce-management-project-chip is-${lane.type}`, lane.name);
+                const chip = element("button", `workforce-management-project-chip is-${laneCategory(lane)}`, lane.name);
                 chip.type = "button";
                 chip.draggable = true;
                 chip.dataset.laneKey = lane.key;
@@ -1050,7 +1170,7 @@
     function renderMonthHeader() {
         const header = query("#workforceManagementMonthHeader");
         const months = timelineMonths();
-        const firstLabels = { worker: "인력", project: "프로젝트" };
+        const firstLabels = { worker: workerDisplay === "department" ? "사업부 · 소속" : "인력", project: "프로젝트" };
         query("#workforceManagementBoard").style.setProperty("--workforce-month-count", String(Math.max(1, months.length)));
         header.replaceChildren(element("span", "", firstLabels[boardView]));
         months.forEach((month) => {
@@ -1062,22 +1182,42 @@
     }
 
     function laneMatches(lane, keyword) {
-        if (projectFilter !== "all" && lane.type !== projectFilter) return false;
+        if (projectFilter !== "all" && laneCategory(lane) !== projectFilter) return false;
         if (!keyword) return true;
         return [lane.name, lane.customer, ...lane.assignments.map(employeeName)].join(" ").toLowerCase().includes(keyword);
     }
 
     function statusLabel(lane) {
+        if (boardBasis === "project-status") {
+            return ({ PLANNED: "계획", BIDDING: "입찰", CONTRACTED: "계약", IN_PROGRESS: "진행", COMPLETED: "완료" })[lane.status] || "계획";
+        }
         if (lane.type === "confirmed") return "확정";
         const labels = { PARTICIPATE: "입찰", REVIEW: "검토", HOLD: "보류" };
         return labels[String(lane.status || "").toUpperCase()] || "계획";
     }
 
     function assignmentHasOverlap(assignment, lane, capacity) {
+        if (isPendingRemoval(assignmentIdentity(lane,assignment))) return false;
         const key = workerKey(assignment);
-        return assignmentAllocations(assignment).some((allocation) => (
-            (capacity.get(`${key}|${allocation.month}`)?.projects.size || 0) > 1
-        ));
+        return assignmentAllocations(assignment).some((allocation) => {
+            if (allocation.mm <= 0) return false;
+            const item=capacity.get(`${key}|${allocation.month}`);
+            return item && item.totalMm > 1 + 0.000001;
+        });
+    }
+
+    function assignmentWarningButton(assignment,lane,capacity) {
+        if (!assignmentHasOverlap(assignment,lane,capacity)) return null;
+        const button=element("button","button button-secondary button-small workforce-management-assignment-warning","사유");
+        button.type="button";
+        button.setAttribute("aria-haspopup","dialog");
+        button.setAttribute("aria-label",`${employeeName(assignment)} · ${lane.name} 과부하·중복 사유`);
+        button.addEventListener("click",(event)=>{
+            event.stopPropagation();
+            openLoadDetails({workerKeys:[workerKey(assignment)],months:assignmentAllocations(assignment).map((a)=>a.month),scopeLanes:[lane],onlyWarnings:true,
+                title:`${employeeName(assignment)} · ${lane.name} 경고 사유`});
+        },{signal:controller.signal});
+        return button;
     }
 
     function assignmentIdentity(lane, assignment) {
@@ -1088,6 +1228,7 @@
     }
 
     function assignmentStatusCode(lane, assignment) {
+        if (boardBasis === "project-status") return laneCategory(lane) === "confirmed" ? "CONFIRMED" : "PLANNED";
         if (lane.type === "planning") return "PLANNED";
         return String(pick(assignment, "assignmentStatusCode", "ASSIGNMENT_STATUS_CODE") || "CONFIRMED").toUpperCase();
     }
@@ -1100,6 +1241,9 @@
         const identity = assignmentIdentity(lane, assignment);
         node.dataset.assignmentKey = identity;
         node.dataset.quickAssignment = identity;
+        node.tabIndex = 0;
+        node.setAttribute("role", "group");
+        node.title = "클릭하면 매출단가를 수정합니다. 이름은 인력정보를 엽니다.";
         node.dataset.laneKey = lane.key;
         node.dataset.workerKey = workerKey(assignment);
         node.dataset.projectId = lane.projectId;
@@ -1121,6 +1265,72 @@
         });
     }
 
+    function projectMonthSummary(lane, assignments, months, capacity) {
+        const totals = new Map(months.map((month) => [month, { workers: new Set(), confirmed: 0, planned: 0, overloaded: new Set() }]));
+        assignments.forEach((assignment) => {
+            if (isPendingRemoval(assignmentIdentity(lane, assignment))) return;
+            const key = workerKey(assignment);
+            assignmentAllocations(assignment).forEach((allocation) => {
+                const item = totals.get(allocation.month);
+                if (!item || allocation.mm <= 0) return;
+                item.workers.add(key);
+                item[assignmentStatusCode(lane, assignment) === "PLANNED" ? "planned" : "confirmed"] += allocation.mm;
+                const total = capacity.get(`${key}|${allocation.month}`);
+                if ((total?.totalMm || 0) > 1 + 0.000001) item.overloaded.add(key);
+            });
+        });
+        return totals;
+    }
+
+    function appendProjectSummary(timeline, lane, assignments, months, capacity) {
+        const totals = projectMonthSummary(lane, assignments, months, capacity);
+        const workers = new Set();
+        let totalMm = 0;
+        totals.forEach((item) => {
+            item.workers.forEach((key) => workers.add(key));
+            totalMm += item.confirmed + item.planned;
+        });
+        const summary = element("div", "workforce-management-project-summary");
+        summary.style.gridColumn = "1 / -1";
+        summary.style.gridRow = "2";
+        summary.append(
+            element("strong", "", `투입 ${workers.size}명 · ${fixed(totalMm)} M/M`),
+            element("span", "", "표시 기간 합계 · 월별 확정 / 계획 투입")
+        );
+        if(workers.size) detailTrigger(summary,{workerKeys:[...workers],months,scopeLanes:[lane],requireScopedAssignment:true,title:`${lane.name} · 기간별 투입 상세`});
+        timeline.appendChild(summary);
+        totals.forEach((item, month) => {
+            const cell = element("div", "workforce-management-summary-month");
+            cell.style.gridColumn = String(months.indexOf(month) + 1);
+            cell.style.gridRow = "3";
+            cell.append(
+                element("strong", "", item.workers.size ? `${item.workers.size}명` : "—"),
+                element("small", "", `${fixed(item.confirmed)} / ${fixed(item.planned)}`)
+            );
+            if (item.overloaded.size) {
+                cell.classList.add("has-overload");
+                cell.append(element("small", "", `과부하 ${item.overloaded.size}명`));
+            }
+            cell.title = `${month} · ${item.workers.size}명 · 확정 ${fixed(item.confirmed)} M/M · 계획 ${fixed(item.planned)} M/M · 전체 프로젝트 합산 과부하 ${item.overloaded.size}명`;
+            if(item.workers.size) detailTrigger(cell,{workerKeys:[...item.workers],months:[month],scopeLanes:[lane],title:`${lane.name} · ${month} 투입 상세`});
+            timeline.appendChild(cell);
+        });
+    }
+
+    function syncSummaryControls() {
+        query("#workforceManagementProjectSummaryControls").hidden = boardView !== "project";
+        root.querySelectorAll("[data-workforce-project-display]").forEach((button) => {
+            const active = !projectExpansion.size && button.dataset.workforceProjectDisplay === projectDisplay;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", String(active));
+        });
+        root.querySelectorAll("[data-workforce-worker-view]").forEach((button) => {
+            const active = button.dataset.workforceWorkerView === workerDisplay;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", String(active));
+        });
+    }
+
     function renderProjectLanes() {
         const container = query("#workforceManagementLanes");
         const keyword = query("#workforceManagementSearch").value.trim().toLowerCase();
@@ -1136,13 +1346,21 @@
         const fragment = document.createDocumentFragment();
         lanes.forEach((lane) => {
             const laneAssignments = boardAssignments(lane);
-            const article = element("article", `workforce-management-lane is-${lane.type}`);
+            const expanded = projectExpansion.get(lane.key) ?? (projectDisplay === "expanded");
+            const article = element("article", `workforce-management-lane is-${laneCategory(lane)}`);
+            article.classList.toggle("is-collapsed", !expanded);
             article.dataset.dropProjectLane = lane.key;
             const info = element("div", "workforce-management-lane-info");
             const heading = element("div", "workforce-management-lane-title");
-            heading.append(element("strong", "", lane.name), element("span", `is-${lane.type}`, statusLabel(lane)));
+            heading.append(element("strong", "", lane.name), element("span", `is-${laneCategory(lane)}`, statusLabel(lane)));
             const period = `${String(lane.startDate || "").slice(0, 10)} ~ ${String(lane.endDate || "").slice(0, 10)}`;
             info.append(heading, element("span", "", lane.customer), element("small", "", period));
+            const toggle = element("button", "workforce-management-project-toggle", expanded ? "▾ 인력 접기" : "▸ 인력 펼치기");
+            toggle.type = "button";
+            toggle.dataset.workforceProjectToggle = lane.key;
+            toggle.setAttribute("aria-expanded", String(expanded));
+            toggle.setAttribute("aria-label", `${lane.name} 인력 ${expanded ? "접기" : "펼치기"}`);
+            info.appendChild(toggle);
             if (lane.type === "confirmed") {
                 const edit = element("button", "workforce-management-project-edit", "✎ 상세");
                 edit.type = "button";
@@ -1153,9 +1371,11 @@
             }
 
             const timeline = element("div", "workforce-management-lane-timeline");
+            timeline.id = `workforce-management-lane-${encodeURIComponent(lane.key)}`;
+            toggle.setAttribute("aria-controls", timeline.id);
             timeline.dataset.projectTimelineLane = lane.key;
             timeline.setAttribute("aria-label", `${lane.name} 프로젝트 기간과 투입 인력`);
-            if (editMode) appendProjectDropCells(timeline, lane, Math.max(2, laneAssignments.length + 1), months);
+            if (editMode && expanded) appendProjectDropCells(timeline, lane, Math.max(2, laneAssignments.length + 1), months);
             const projectPosition = timelinePosition(lane.startDate, lane.endDate, months);
             if (projectPosition) {
                 const band = element("div", "workforce-management-project-period");
@@ -1164,7 +1384,8 @@
                 band.setAttribute("aria-label", `프로젝트 기간 ${period}`);
                 timeline.appendChild(band);
             }
-            laneAssignments.forEach((assignment, index) => {
+            if (!expanded) appendProjectSummary(timeline, lane, laneAssignments, months, capacity);
+            (expanded ? laneAssignments : []).forEach((assignment, index) => {
                 const position = timelinePosition(
                     pick(assignment, "assignmentStartDate", "ASSIGNMENT_START_DATE"),
                     pick(assignment, "assignmentEndDate", "ASSIGNMENT_END_DATE"),
@@ -1172,8 +1393,7 @@
                 );
                 if (!position) return;
                 const assignmentType = assignmentStatusCode(lane, assignment).toLowerCase();
-                const bar = element("button", `workforce-management-assignment is-${assignmentType}${assignmentHasOverlap(assignment, lane, capacity) ? " has-overlap" : ""}`);
-                bar.type = "button";
+                const bar = element("div", `workforce-management-assignment is-${assignmentType}${assignmentHasOverlap(assignment, lane, capacity) ? " has-overlap" : ""}`);
                 bar.style.gridColumn = `${position.start} / span ${position.span}`;
                 bar.style.gridRow = String(index + 2);
                 decorateAssignmentNode(bar, lane, assignment);
@@ -1183,16 +1403,16 @@
                 const positionName = pick(worker, "positionName", "POSITION_NAME") || "직급 미지정";
                 const roleName = pick(assignment, "projectRoleName", "PROJECT_ROLE_NAME") || "역할 미지정";
                 const person = element("div", "workforce-management-assignment-person");
-                person.dataset.workerDetail = workerKey(assignment);
-                person.setAttribute("role", "button");
-                person.setAttribute("tabindex", "0");
-                person.setAttribute("aria-label", `${employeeName(assignment)} 인력 상세정보`);
-                person.title = "사진, 이름 또는 부서를 클릭하면 인력 상세정보를 확인할 수 있습니다.";
                 const photo = workerPhoto(worker);
                 photo.classList.add("is-assignment");
                 const personCopy = element("div", "workforce-management-assignment-person-copy");
+                const nameLink = element("button", "workforce-management-assignment-name", employeeName(assignment));
+                nameLink.type = "button";
+                nameLink.dataset.workerDetail = workerKey(assignment);
+                nameLink.draggable = false;
+                nameLink.setAttribute("aria-label", `${employeeName(assignment)} 인력 상세정보`);
                 personCopy.append(
-                    element("strong", "", employeeName(assignment)),
+                    nameLink,
                     element("small", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 미지정")
                 );
                 const metadata = element("div", "workforce-management-assignment-metadata");
@@ -1204,14 +1424,21 @@
                 ].forEach((text) => metadata.appendChild(element("span", "", text)));
                 personCopy.appendChild(metadata);
                 person.append(photo, personCopy);
-                bar.append(person, element("span", "workforce-management-assignment-settings", isEditDraft(assignment) ? "✎" : "⚙"));
+                const settings=element("button", "workforce-management-assignment-settings", "매출단가 수정");
+                settings.type="button";
+                settings.dataset.quickAssignment=assignmentIdentity(lane,assignment);
+                settings.setAttribute("aria-label",`${employeeName(assignment)} 매출단가 수정`);
+                bar.appendChild(person);
+                const warningButton=assignmentWarningButton(assignment,lane,capacity);
+                if (warningButton) bar.appendChild(warningButton);
+                bar.appendChild(settings);
                 if (bar.classList.contains("is-pending-order")) {
                     const orderChange = element("span", "workforce-management-assignment-order-change", "↕");
                     orderChange.title = "순서 변경 · 저장 대기";
                     orderChange.setAttribute("aria-hidden", "true");
                     bar.appendChild(orderChange);
                 }
-                if (editMode) {
+                {
                     const pendingRemoval = isPendingRemoval(assignmentIdentity(lane, assignment));
                     const remove = element("span", "workforce-management-assignment-remove", "×");
                     remove.dataset.removeAssignment = assignmentIdentity(lane, assignment);
@@ -1228,7 +1455,7 @@
                 );
                 timeline.appendChild(bar);
             });
-            if (!laneAssignments.length) {
+            if (expanded && !laneAssignments.length) {
                 const empty = element("span", "workforce-management-lane-empty", "등록된 투입 인력이 없습니다.");
                 empty.style.gridColumn = "1 / -1";
                 empty.style.gridRow = "2";
@@ -1260,12 +1487,140 @@
             .sort(compareWorkers);
     }
 
+    function departmentGroups(workers) {
+        const groups = new Map();
+        workers.forEach((worker) => {
+            const code = String(pick(worker, "departmentCode", "DEPARTMENT_CODE") || "").toUpperCase();
+            const name = String(pick(worker, "departmentName", "DEPARTMENT_NAME") || "");
+            const department = departments.find((item) => String(item.code).toUpperCase() === code || (!code && item.label === name));
+            const internal = worker.workerKey.startsWith("USER:");
+            const company = pick(worker, "companyName", "COMPANY_NAME") || "소속 미지정";
+            const key = internal ? (department?.code || code || name || "UNASSIGNED") : `PARTNER:${company}`;
+            if (!groups.has(key)) groups.set(key, {
+                key,
+                label: internal ? (department?.label || name || "부서 미지정") : `협력업체 · ${company}`,
+                order: internal ? Number(department?.displayOrder ?? 999) : 1000,
+                workers: []
+            });
+            groups.get(key).workers.push(worker);
+        });
+        return [...groups.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, "ko"));
+    }
+
+    function departmentMonthSummary(workers, month, shownCapacity, totalCapacity) {
+        let mm = 0, available = 0;
+        const assignedWorkers = new Set();
+        const overloadedWorkers = new Set();
+        workers.forEach((worker) => {
+            const key = `${worker.workerKey}|${month}`;
+            const shownMm = shownCapacity.get(key)?.totalMm || 0;
+            const totalMm = totalCapacity.get(key)?.totalMm || 0;
+            const capacity = workerMonthlyCapacity(worker,month);
+            if (shownMm > 0) assignedWorkers.add(worker.workerKey);
+            mm += shownMm;
+            available += Math.max(0, capacity - totalMm);
+            if (totalMm > 1 + 0.000001) overloadedWorkers.add(worker.workerKey);
+        });
+        return { assigned: assignedWorkers.size, mm, available, overloaded: overloadedWorkers.size, assignedWorkers, overloadedWorkers };
+    }
+
+    function departmentPeriodSummary(workers, months, lanes, shownCapacity, totalCapacity) {
+        const monthly = new Map();
+        const assignedWorkers = new Set();
+        const overloadedWorkers = new Set();
+        let totalMm = 0, availableMm = 0, overloadedMonths = 0;
+        months.forEach((month) => {
+            const item = departmentMonthSummary(workers, month, shownCapacity, totalCapacity);
+            monthly.set(month, item);
+            item.assignedWorkers.forEach((key) => assignedWorkers.add(key));
+            item.overloadedWorkers.forEach((key) => overloadedWorkers.add(key));
+            totalMm += item.mm;
+            availableMm += item.available;
+            if (item.overloaded) overloadedMonths += 1;
+        });
+        const workerKeys = new Set(workers.map((worker) => worker.workerKey));
+        const monthKeys = new Set(months);
+        const projects = new Set();
+        lanes.forEach((lane) => {
+            if (boardAssignments(lane).some((assignment) => (
+                workerKeys.has(workerKey(assignment))
+                && !isPendingRemoval(assignmentIdentity(lane, assignment))
+                && assignmentAllocations(assignment).some((allocation) => monthKeys.has(allocation.month) && allocation.mm > 0)
+            ))) projects.add(String(lane.projectId || lane.key));
+        });
+        return { monthly, assigned: assignedWorkers.size, projectCount: projects.size, totalMm, availableMm, overloaded: overloadedWorkers.size, overloadedMonths };
+    }
+
+    function renderDepartmentInfo(group, summary, months) {
+        const info = element("div", "workforce-management-worker-row-info");
+        const name = element("strong", "", group.label);
+        name.title = group.label;
+        info.append(name, element("span", "", `조회 인력 ${group.workers.length}명`));
+        const metrics = element("dl", "workforce-management-department-metrics");
+        const rows = [
+            ["기간 투입 인원", `${summary.assigned}명`, "표시 기간 동안 조회 프로젝트에 투입된 인력입니다. 같은 사람은 한 번만 계산합니다."],
+            ["참여 프로젝트", `${summary.projectCount}개`, "표시 기간에 투입된 프로젝트 수입니다. 같은 프로젝트의 확정·계획 배치는 한 개로 계산합니다."],
+            ["누적 투입", `${fixed(summary.totalMm)} M/M`, "조회 인력과 프로젝트의 표시 기간 투입 M/M 합계입니다."],
+            ["가용 합계", `${fixed(summary.availableMm)} M/M`, "조회 인력의 전체 프로젝트 투입과 가용기간을 반영한 표시 기간의 잔여 M/M 합계입니다. 현재 시점의 가용인원 수가 아닙니다."],
+            ["과부하", summary.overloaded ? `${summary.overloaded}명 · ${summary.overloadedMonths}개월` : "없음", "표시 기간에 과부하가 발생한 인력 수(중복 제외)와 과부하가 있었던 월 수입니다. 전체 프로젝트를 반영합니다."]
+        ];
+        rows.forEach(([label, value, title]) => {
+            const metric = element("div", label === "과부하" && summary.overloaded ? "has-overload" : "");
+            metric.title = title;
+            metric.append(element("dt", "", label), element("dd", "", value));
+            if(label!=="과부하" || summary.overloaded) detailTrigger(metric,{workerKeys:group.workers.map((w)=>w.workerKey),months,scopeLanes:workerMatrixLanes(),onlyWarnings:label==="과부하",availableOnly:label==="가용 합계",requireScopedAssignment:["기간 투입 인원","참여 프로젝트","누적 투입"].includes(label),title:`${group.label} · ${label} 월별 근거`});
+            metrics.appendChild(metric);
+        });
+        info.appendChild(metrics);
+        if (months.length) info.appendChild(element("small", "", `${months[0].replace("-", ".")} ~ ${months[months.length - 1].replace("-", ".")} 합계`));
+        return info;
+    }
+
+    function renderDepartmentMatrix() {
+        const container = query("#workforceManagementLanes");
+        const lanes = workerMatrixLanes();
+        const groups = departmentGroups(visibleWorkers(lanes));
+        const { capacity: shownCapacity } = allocationState(lanes);
+        const { capacity: totalCapacity } = allocationState();
+        const months = timelineMonths();
+        container.replaceChildren();
+        if (!groups.length) {
+            container.appendChild(element("p", "empty-state", "조회 조건에 해당하는 인력이 없습니다."));
+            return;
+        }
+        groups.forEach((group) => {
+            const row = element("article", "workforce-management-worker-row workforce-management-department-row");
+            const summary = departmentPeriodSummary(group.workers, months, lanes, shownCapacity, totalCapacity);
+            row.appendChild(renderDepartmentInfo(group, summary, months));
+            months.forEach((month) => {
+                const item = summary.monthly.get(month);
+                const cell = element("div", "workforce-management-summary-month");
+                cell.classList.toggle("has-overload", item.overloaded > 0);
+                cell.append(
+                    element("strong", "", `투입 ${item.assigned}명`),
+                    element("span", "", `${fixed(item.mm)} M/M`),
+                    element("small", "", `가용 ${fixed(item.available)}`)
+                );
+                if (item.overloaded) cell.append(element("small", "", `과부하 ${item.overloaded}명`));
+                cell.title = `${month} · 조회 인력 ${group.workers.length}명 · 표시 프로젝트 투입 ${fixed(item.mm)} M/M · 전체 프로젝트 반영 가용 ${fixed(item.available)} M/M · 과부하 ${item.overloaded}명`;
+                const keys=new Set([...item.assignedWorkers,...item.overloadedWorkers]);
+                detailTrigger(cell,{workerKeys:keys.size?[...keys]:group.workers.map((w)=>w.workerKey),months:[month],scopeLanes:lanes,title:`${group.label} · ${month} 상세 대상과 사유`});
+                row.appendChild(cell);
+            });
+            container.appendChild(row);
+        });
+    }
+
+    function workerMatrixLanes() {
+        const keyword = query("#workforceManagementSearch").value.trim().toLowerCase();
+        const scopedLanes = projectScopedLanes().filter((lane) => projectFilter === "all" || laneCategory(lane) === projectFilter);
+        const matchingLanes = keyword ? scopedLanes.filter((lane) => laneMatches(lane, keyword)) : [];
+        return matchingLanes.length ? matchingLanes : scopedLanes;
+    }
+
     function renderWorkerMatrix() {
         const container = query("#workforceManagementLanes");
-        const keyword = query("#workforceManagementSearch").value.trim().toLowerCase();
-        const scopedLanes = projectScopedLanes().filter((lane) => projectFilter === "all" || lane.type === projectFilter);
-        const matchingLanes = keyword ? scopedLanes.filter((lane) => laneMatches(lane, keyword)) : [];
-        const lanes = matchingLanes.length ? matchingLanes : scopedLanes;
+        const lanes = workerMatrixLanes();
         const workers = visibleWorkers(lanes);
         const { capacity } = allocationState();
         container.replaceChildren();
@@ -1277,30 +1632,39 @@
             const row = element("article", "workforce-management-worker-row");
             const projects = [];
             lanes.forEach((lane) => {
-                const assignment = boardAssignments(lane).find((item) => workerKey(item) === worker.workerKey);
-                if (assignment) projects.push({ lane, assignment });
+                boardAssignments(lane).filter((item) => workerKey(item) === worker.workerKey)
+                    .forEach((assignment) => projects.push({ lane, assignment }));
             });
             const rowCount = Math.max(1, projects.length);
-            const workerCell = element("div", "workforce-management-worker-row-info");
+            const workerCell = element("div", "workforce-management-worker-row-info is-person");
             workerCell.dataset.workerKey = worker.workerKey;
             workerCell.draggable = false;
             workerCell.style.gridRow = `1 / span ${rowCount}`;
             const identity = element("div", "workforce-management-worker-row-identity");
             const nameRow = element("div", "workforce-management-worker-row-name");
-            nameRow.append(
-                element("strong", "", pick(worker, "employeeName", "EMPLOYEE_NAME") || "이름 미정"),
-                workerPhoto(worker)
-            );
-            identity.append(
-                nameRow,
-                element("span", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음")
-            );
+            const name=element("strong", "", employeeName(worker));
+            name.title=employeeName(worker);
+            const affiliation=element("span", "", [pick(worker, "companyName", "COMPANY_NAME"), pick(worker, "departmentName", "DEPARTMENT_NAME")].filter(Boolean).join(" · ") || "소속 정보 없음");
+            affiliation.title=affiliation.textContent;
+            nameRow.append(name,affiliation);
+            identity.append(workerPhoto(worker),nameRow);
             const footer = element("div", "workforce-management-worker-row-footer");
-            const detailButton = element("button", "workforce-management-worker-detail-button", "상세");
+            const detailButton = element("button", "workforce-management-worker-detail-button", "인력정보");
             detailButton.type = "button";
             detailButton.dataset.workerDetail = worker.workerKey;
             detailButton.draggable = false;
-            footer.append(element("small", "", projects.length ? `${projects.length}개 프로젝트` : "가용"), detailButton);
+            detailButton.setAttribute("aria-label",`${employeeName(worker)} 인력정보 보기`);
+            const loadButton=element("button","workforce-management-worker-detail-button workforce-management-worker-load-button","투입내역");
+            loadButton.type="button";
+            loadButton.setAttribute("aria-label",`${employeeName(worker)} 투입내역·경고 사유 보기`);
+            loadButton.title="월별 투입량과 경고 사유 보기";
+            loadButton.addEventListener("click",()=>openLoadDetails({workerKeys:[worker.workerKey],scopeLanes:lanes,title:`${employeeName(worker)} · 투입·경고 상세`}),{signal:controller.signal});
+            const projectCount=new Set(projects.map(({lane})=>String(lane.projectId))).size;
+            const summary=element("small", "", projectCount ? `${projectCount}개 사업` : "미투입");
+            summary.title=`참여 프로젝트 ${projectCount}개`;
+            const actions=element("div","workforce-management-worker-row-actions");
+            actions.append(detailButton,loadButton);
+            footer.append(summary,actions);
             workerCell.append(identity, footer);
             row.appendChild(workerCell);
             timelineMonths().forEach((month, index) => {
@@ -1309,6 +1673,7 @@
                 cell.dataset.dropMonth = month;
                 cell.style.gridColumn = String(index + 2);
                 cell.style.gridRow = `1 / span ${rowCount}`;
+                detailTrigger(cell,{workerKeys:[worker.workerKey],months:[month],scopeLanes:lanes});
                 row.appendChild(cell);
             });
             projects.forEach(({ lane, assignment }, index) => {
@@ -1329,11 +1694,14 @@
                     element("strong", "", lane.name),
                     element("small", "", `${assignmentStatusLabel(lane, assignment)} · ${dateText(pick(assignment, "assignmentStartDate", "ASSIGNMENT_START_DATE"))} ~ ${dateText(pick(assignment, "assignmentEndDate", "ASSIGNMENT_END_DATE"))} · ${fixed(pick(assignment, "totalMm", "TOTAL_MM"))} M/M`)
                 );
-                const settings = element("button", "workforce-management-assignment-settings", isEditDraft(assignment) ? "✎" : "⚙");
+                const settings = element("button", "workforce-management-assignment-settings", "매출단가 수정");
                 settings.type = "button";
                 settings.dataset.quickAssignment = assignmentIdentity(lane, assignment);
-                settings.setAttribute("aria-label", `${lane.name} 투입 세부 설정`);
-                bar.append(copy, settings);
+                settings.setAttribute("aria-label", `${lane.name} 매출단가 수정`);
+                bar.appendChild(copy);
+                const warningButton=assignmentWarningButton(assignment,lane,capacity);
+                if (warningButton) bar.appendChild(warningButton);
+                bar.appendChild(settings);
                 row.appendChild(bar);
             });
             container.appendChild(row);
@@ -1344,11 +1712,16 @@
         return withRenderCalculationCache(() => {
             const descriptions = {
                 worker: "인력별로 프로젝트 기간 막대를 나누어 여러 프로젝트 투입을 한 번에 비교합니다.",
-                project: "프로젝트별 기간과 10명 이상의 투입 인력을 세로로 확장하여 비교합니다."
+                project: "프로젝트별 월 투입 인원과 M/M을 요약합니다. ‘인력 펼치기’로 개별 배치를 확인하고 편집할 수 있습니다."
             };
-            query("#workforceManagementTimelineDescription").textContent = descriptions[boardView];
+            query("#workforceManagementTimelineDescription").textContent = boardView === "worker" && workerDisplay === "department"
+                ? "조회 인력의 사업부별 월 투입을 요약합니다. 가용 M/M·과부하는 전체 프로젝트를 합산하며, 협력업체는 회사별로 표시합니다."
+                : descriptions[boardView];
+            query("#workforceManagementTimelineDescription").textContent += " 요약 숫자·과부하 표시를 누르면 대상과 상세 사유를 확인할 수 있습니다.";
             if (boardView === "project") renderProjectLanes();
+            else if (workerDisplay === "department") renderDepartmentMatrix();
             else renderWorkerMatrix();
+            syncSummaryControls();
         });
     }
 
@@ -1365,6 +1738,7 @@
     }
 
     async function loadDashboard(preferredScenarioId = "", preferredYear = null) {
+        detailLayer?.close();
         const requestId = ++requestSequence;
         const requestedYear = Number(preferredYear);
         const year = Number.isInteger(requestedYear) && requestedYear >= 1900 && requestedYear <= 2100
@@ -1392,6 +1766,9 @@
             references = dashboard.references || { workers: [], actualCapacity: [] };
             scenarios = dashboard.scenarios || [];
             scenario = dashboard.scenario || null;
+            query("#workforceManagementBasisField").hidden = !scenario?.projects?.length;
+            if (!scenario?.projects?.length) boardBasis = "project-status";
+            query("#workforceManagementBasis").value = boardBasis;
             renderAll();
             requestAnimationFrame(() => {
                 applyTimelineScale();
@@ -1399,7 +1776,7 @@
             });
             Common.ui.setInlineStatus(
                 query("#workforceManagementStatus"),
-                `${year}년과 수행기간이 겹치는 확정 ${confirmedLanes().length}개, 계획 ${planningLanes().length}개 프로젝트를 조회했습니다.`,
+                `${year}년과 수행기간이 겹치는 확정 ${allLanes().filter((lane) => laneCategory(lane) === "confirmed").length}개, 계획 ${allLanes().filter((lane) => laneCategory(lane) === "planning").length}개 프로젝트를 조회했습니다.`,
                 "success"
             );
             return true;
@@ -1666,6 +2043,7 @@
     }
 
     async function requestAssignmentRemoval(identity) {
+        if (!editMode && !await setEditMode(true)) return;
         toggleAssignmentRemoval(identity);
     }
 
@@ -1913,7 +2291,7 @@
             mm: number(query("#workforceManagementQuickMm").value),
             monthlyAllocations: quickAllocationList(),
             costUnitPrice: query("#workforceManagementQuickCost").value,
-            salesUnitPrice: query("#workforceManagementQuickSales").value,
+            salesUnitPrice: query("#workforceManagementQuickSales").value || "0",
             projectRoleName: query("#workforceManagementQuickRole").value.trim(),
             primaryDuty: query("#workforceManagementQuickPrimaryDuty").value.trim(),
             note: query("#workforceManagementQuickNote").value.trim()
@@ -1964,7 +2342,9 @@
         query("#workforceManagementQuickStart").value = dateText(pick(assignment, "assignmentStartDate", "ASSIGNMENT_START_DATE"));
         query("#workforceManagementQuickEnd").value = dateText(pick(assignment, "assignmentEndDate", "ASSIGNMENT_END_DATE"));
         query("#workforceManagementQuickAssignmentStatus").value = assignmentStatusCode(lane, assignment);
-        query("#workforceManagementQuickAssignmentStatus").disabled = lane.type === "planning";
+        query("#workforceManagementQuickStatusLabel").textContent = boardBasis === "project-status" ? "투입 구분 · 진행상태 자동 적용" : "기존 계획안 투입 구분";
+        query("#workforceManagementQuickAssignmentStatus").disabled = boardBasis === "project-status" || lane.type === "planning";
+        query("#workforceManagementQuickAssignmentStatus").title = boardBasis === "project-status" ? "프로젝트 진행상태에서 자동 결정됩니다." : "기존 계획안의 투입 구분";
         const allocations = assignmentAllocations(assignment);
         const mm = allocations[0]?.mm ?? number(pick(assignment, "defaultMm", "DEFAULT_MM") ?? 1);
         quickMonthlyAllocations = new Map(allocations.map((item) => [item.month, number(item.mm)]));
@@ -2012,7 +2392,7 @@
             companyName: pick(worker, "companyName", "COMPANY_NAME") || "소속 미정",
             assignmentStartDate: period.startDate,
             assignmentEndDate: period.endDate,
-            assignmentStatusCode: lane.type === "planning" ? "PLANNED" : "CONFIRMED",
+            assignmentStatusCode: assignmentStatusCode(lane, {}),
             defaultMm: 1,
             totalMm: monthlyAllocations.length,
             monthlyAllocations
@@ -2027,6 +2407,14 @@
         dialog.style.setProperty("--workforce-quick-y", "0px");
         dialog.showModal();
         query("#workforceManagementQuickStart").focus();
+    }
+
+    function openQuickSales(identity) {
+        openQuickEdit(identity);
+        const field = query("#workforceManagementQuickSales");
+        field.focus();
+        field.scrollIntoView({block:"center",behavior:"instant"});
+        field.select();
     }
 
     function openQuickEdit(identity) {
@@ -2212,7 +2600,7 @@
 
     async function confirmedDraftBodies(projectId, drafts) {
         const lane = laneByKey(`confirmed:${projectId}`);
-        if (!lane) throw new Error("저장할 확정 프로젝트를 찾지 못했습니다.");
+        if (!lane) throw new Error("저장할 프로젝트를 찾지 못했습니다.");
         const detailPayload = await Common.api.request(`/project-assignments?projectId=${encodeURIComponent(projectId)}`, {
             signal: controller.signal,
             showLoading: false
@@ -2706,6 +3094,10 @@
             discardMainEditChanges({ render: false });
         }
         editMode = nextEditMode;
+        if (editMode) {
+            projectDisplay = "expanded";
+            projectExpansion.clear();
+        }
         const button = query("#workforceManagementEditModeButton");
         button.classList.toggle("is-active", editMode);
         button.setAttribute("aria-pressed", String(editMode));
@@ -2914,6 +3306,10 @@
         event.preventDefault();
         clearBoardDragFeedback();
         if (projectLane) {
+            if (projectLane.classList.contains("is-collapsed")) {
+                event.dataTransfer.dropEffect = "none";
+                return;
+            }
             const lane = laneByKey(projectLane.dataset.dropProjectLane);
             if (isDuplicateProjectDrop(lane, payload)) {
                 event.dataTransfer.dropEffect = "none";
@@ -2943,6 +3339,10 @@
         if (!target || !payload || !projectEditActive() || mutationBusy) return;
         event.preventDefault();
         if (projectLane) {
+            if (projectLane.classList.contains("is-collapsed")) {
+                Common.ui.setInlineStatus(query("#workforceManagementBoardStatus"), "프로젝트의 인력을 펼친 뒤 배치해 주세요.", "warning");
+                return;
+            }
             if (duplicateDrop) {
                 Common.ui.setInlineStatus(query("#workforceManagementBoardStatus"), "이미 등록된 인력은 같은 프로젝트에 다시 배치할 수 없습니다.", "warning");
                 return;
@@ -2975,6 +3375,44 @@
     }
 
     function bindEvents() {
+        query("#workforceManagementBasis").addEventListener("change", (event) => {
+            if (hasMainEditChanges() || editorEntry) {
+                event.currentTarget.value = boardBasis;
+                Common.ui.toast("편집을 저장하거나 종료한 뒤 조회 기준을 변경해 주세요.", "warning");
+                return;
+            }
+            boardBasis = event.currentTarget.value === "legacy-scenario" ? "legacy-scenario" : "project-status";
+            projectExpansion.clear();
+            renderAll();
+            Common.ui.setInlineStatus(query("#workforceManagementBoardStatus"), boardBasis === "legacy-scenario"
+                ? "기존 별도 계획안 참고 보기입니다. 홈 실적에는 합산되지 않습니다."
+                : "프로젝트 진행상태 기준입니다. 계약·진행·완료는 확정, 계획·입찰은 계획입니다.");
+        }, { signal: controller.signal });
+        root.querySelectorAll("[data-workforce-project-display]").forEach((button) => {
+            button.addEventListener("click", () => {
+                projectDisplay = button.dataset.workforceProjectDisplay;
+                projectExpansion.clear();
+                renderLanes();
+            }, { signal: controller.signal });
+        });
+        root.querySelectorAll("[data-workforce-worker-view]").forEach((button) => {
+            button.addEventListener("click", () => {
+                workerDisplay = button.dataset.workforceWorkerView;
+                renderMonthHeader();
+                renderLanes();
+            }, { signal: controller.signal });
+        });
+        root.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-workforce-project-toggle]");
+            if (!button) return;
+            const key = button.dataset.workforceProjectToggle;
+            const expanded = !(projectExpansion.get(key) ?? (projectDisplay === "expanded"));
+            if (expanded === (projectDisplay === "expanded")) projectExpansion.delete(key);
+            else projectExpansion.set(key, expanded);
+            renderLanes();
+            [...root.querySelectorAll("[data-workforce-project-toggle]")]
+                .find((item) => item.dataset.workforceProjectToggle === key)?.focus({ preventScroll: true });
+        }, { signal: controller.signal });
         querySelects("year").forEach((select) => {
             select.addEventListener("change", () => {
                 changeDashboardYear(select).catch((error) => Common.ui.toast(error.message || "조회 연도를 변경하지 못했습니다.", "error"));
@@ -3117,7 +3555,7 @@
             }
             const quickAssignment = event.target.closest("[data-quick-assignment]");
             if (quickAssignment) {
-                openQuickEdit(quickAssignment.dataset.quickAssignment);
+                openQuickSales(quickAssignment.dataset.quickAssignment);
                 return;
             }
             const edit = event.target.closest("[data-workforce-editor]");
@@ -3130,6 +3568,11 @@
             }
         }, { signal: controller.signal });
         root.addEventListener("keydown", (event) => {
+            if (event.target.matches(".workforce-management-assignment, .workforce-management-worker-project-bar") && ["Enter", " "].includes(event.key)) {
+                event.preventDefault();
+                openQuickSales(event.target.dataset.quickAssignment);
+                return;
+            }
             const workerDetail = event.target.closest("[data-worker-detail]");
             if (workerDetail && ["Enter", " "].includes(event.key)) {
                 event.preventDefault();
@@ -3253,6 +3696,7 @@
         }, { signal: controller.signal });
         root.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
+            if (detailLayer?.isOpen()) return;
             if (query("#workforceManagementQuickDialog")?.open) return;
             if (query("#workforceManagementWorkerDetailDialog")?.open) {
                 closeWorkerDetail();
@@ -3265,15 +3709,49 @@
         window.addEventListener("resize", () => requestAnimationFrame(applyTimelineScale), { signal: controller.signal });
     }
 
+    function applyRouteContext(route = {}) {
+        route = route || {};
+        if (!route.phase && !route.projectId && !route.assignmentId) return;
+        boardBasis="project-status";
+        query("#workforceManagementBasis").value=boardBasis;
+        projectFilter=["confirmed","planning"].includes(route.phase) ? route.phase : "all";
+        root.querySelectorAll("[data-workforce-filter]").forEach((button)=>{
+            const active=button.dataset.workforceFilter===projectFilter;
+            button.classList.toggle("is-active",active);button.setAttribute("aria-pressed",String(active));
+        });
+        query("#workforceManagementSearch").value="";
+        syncQuerySelects("project",route.projectId || "");
+        setBoardView("project");
+        renderAll();
+        if (route.assignmentId) {
+            try {
+                openQuickEdit(`confirmed:${Number(route.assignmentId)}`);
+                const field=query(route.priceField==="allocation" ? "#workforceManagementQuickStart" : route.priceField==="cost" ? "#workforceManagementQuickCost" : "#workforceManagementQuickSales");
+                const details=field.closest("details");
+                if (details) details.open=true;
+                field.focus();
+                field.scrollIntoView({block:"center",behavior:"instant"});
+                if (route.priceField!=="allocation") field.select();
+            } catch (error) {
+                Common.ui.setInlineStatus(query("#workforceManagementStatus"),error.message || "해당 투입을 찾지 못했습니다.","error");
+            }
+        }
+    }
+
     window.Pages = window.Pages || {};
     window.Pages[PAGE_NAME] = {
         async init(context) {
             root = context.root;
             pageContext = context;
             controller = new AbortController();
+            detailLayer = Common.ui.createDetailDialog({ root, prefix: "workforceManagementLoadDetail", signal: controller.signal });
             projectFilter = "all";
+            boardBasis = "project-status";
             boardView = "project";
             projectSort = "start";
+            projectDisplay = "summary";
+            projectExpansion = new Map();
+            workerDisplay = "individual";
             workerTypeFilter = query("#workforceManagementWorkerType")?.value || "INTERNAL_REGULAR";
             query("#workforceManagementMatrixWorkerType").value = workerTypeFilter;
             workerNameFilter = "";
@@ -3290,8 +3768,11 @@
             const initialYear = context.routeContext?.planYear || context.routeContext?.projectYear || new Date().getFullYear();
             initializeYears(initialYear);
             bindEvents();
+            [["Project","projects"],["Assignment","assignments"],["Available","available"],["Warning","warnings"]].forEach(([id,kind])=>query(`#workforceManagement${id}Metric`).addEventListener("click",()=>openMetricDetails(kind),{signal:controller.signal}));
+            query("#workforceManagementAlertCount").addEventListener("click",()=>openMetricDetails("warnings"),{signal:controller.signal});
             renderAll();
             await loadDashboard(context.routeContext?.scenarioId || "", initialYear);
+            applyRouteContext(context.routeContext);
         },
 
         async beforeLeave() {
@@ -3312,6 +3793,7 @@
                 editRemovals.clear();
             }
             if (editorEntry && !(await releaseEditor({ confirmDiscard: true, refresh: false }))) return false;
+            detailLayer?.close();
             if (maximized) setMaximized(false);
             return true;
         },
@@ -3332,9 +3814,11 @@
             const requestedYear = Number(context.routeContext?.planYear || context.routeContext?.projectYear);
             const targetYear = Number.isInteger(requestedYear) ? requestedYear : selectedYear();
             await loadDashboard(context.routeContext?.scenarioId || scenario?.scenarioId || "", targetYear);
+            applyRouteContext(context.routeContext);
         },
 
         async destroy() {
+            detailLayer?.destroy(); detailLayer=null;
             controller?.abort();
             requestSequence += 1;
             if (editorEntry) await releaseEditor({ confirmDiscard: false, refresh: false });
@@ -3352,6 +3836,7 @@
             editorOpening = false;
             establishmentYear = null;
             departments = [];
+            projectExpansion.clear();
             boardView = "project";
             projectSort = "start";
             workerTypeFilter = "";

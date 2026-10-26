@@ -29,6 +29,7 @@ from backend.routers import (
     admin_notices,
     admin_projects,
     admin_users,
+    annual_targets,
     auth,
     home,
     planning_scenarios,
@@ -336,6 +337,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(home.router, prefix="/api/home", tags=["home"])
 app.include_router(account.router, prefix="/api/account", tags=["account"])
+app.include_router(annual_targets.router, prefix="/api/planning/annual-targets", tags=["annual-targets"])
 app.include_router(site_settings.public_router, prefix="/api/site", tags=["site"])
 app.include_router(
     admin_companies.router,

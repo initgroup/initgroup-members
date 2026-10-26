@@ -78,6 +78,7 @@ class PortalAccessTests(unittest.TestCase):
             access["pageFiles"]["htmlPages"],
         )
         self.assertNotIn("home", access["pageFiles"]["htmlPages"])
+        self.assertNotIn("workforce-load-detail", access["pageFiles"]["htmlPages"])
         self.assertNotIn("admin-users", serialized)
         self.assertNotIn("business-planning", serialized)
 
@@ -89,6 +90,12 @@ class PortalAccessTests(unittest.TestCase):
         self.assertIn("business-planning", group_keys)
         self.assertIn("my-account", group_keys)
         self.assertIn("home", access["pageFiles"]["htmlPages"])
+        self.assertIn("workforce-load-detail", access["pageFiles"]["htmlPages"])
+        self.assertIn("workforce-load-detail", access["pageFiles"]["scriptPages"])
+        planning = next(item for item in access["navigation"] if item.get("key") == "business-planning")
+        detail = next(item for item in planning["children"] if item.get("page") == "workforce-load-detail")
+        self.assertTrue(detail["hidden"])
+        self.assertEqual("workforce-management", detail["parentPage"])
         self.assertIn("my-project-assignments", access["pageFiles"]["htmlPages"])
         self.assertIn("admin-users", access["pageFiles"]["htmlPages"])
 
@@ -213,7 +220,7 @@ class RoleEnforcementTests(unittest.TestCase):
 
         self.assertEqual(403, response.status_code)
 
-    def test_user_is_blocked_from_executive_home_asset(self):
+    def test_user_is_blocked_from_executive_home_and_workload_detail_assets(self):
         async def call_next(_request):
             return JSONResponse({"unexpected": True})
 
@@ -222,14 +229,10 @@ class RoleEnforcementTests(unittest.TestCase):
             "authenticate_request",
             return_value={"userId": 9, "roleCode": "USER", "passwordChangeYn": "Y"},
         ):
-            response = asyncio.run(
-                main.enforce_api_authentication(
-                    _request("/pages/home.html"),
-                    call_next,
-                )
-            )
-
-        self.assertEqual(403, response.status_code)
+            for path in ("/pages/home.html", "/pages/workforce-load-detail.html", "/js/workforce-load-detail.js"):
+                with self.subTest(path=path):
+                    response = asyncio.run(main.enforce_api_authentication(_request(path), call_next))
+                    self.assertEqual(403, response.status_code)
 
 
 class PersonalDashboardTests(unittest.TestCase):

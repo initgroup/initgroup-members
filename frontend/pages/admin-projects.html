@@ -38,6 +38,8 @@
                     <span>진행상태</span>
                     <select id="projectStatusFilter" class="select">
                         <option value="ALL">전체</option>
+                        <option value="PRE_CONTRACT">계획·입찰 (검토 대상)</option>
+                        <option value="POST_CONTRACT">계약·진행·완료 (확정 수주)</option>
                         <option value="PLANNED">계획</option>
                         <option value="BIDDING">입찰</option>
                         <option value="CONTRACTED">계약</option>
@@ -120,6 +122,20 @@
         <button id="newProjectButton" class="button button-primary" type="button">새 프로젝트</button>
     </div>
 
+    <dialog id="adminProjectDetailDialog" class="dialog admin-project-detail-dialog" aria-labelledby="adminProjectDialogTitle">
+        <header class="dialog-header" id="adminProjectDialogHandle">
+            <div>
+                <h3 id="adminProjectDialogTitle" tabindex="-1">프로젝트 상세</h3><p>제목 표시줄을 드래그해 이동할 수 있습니다.</p>
+                <nav class="admin-project-dialog-sections" aria-label="프로젝트 상세 영역">
+                    <button class="button button-secondary button-small" type="button" data-admin-project-section="projectEditorPanel">기본 정보</button>
+                    <button id="adminProjectCompanyJump" class="button button-secondary button-small" type="button" data-admin-project-section="projectCompanyEditorPanel">참여회사</button>
+                    <button id="adminProjectRevenueJump" class="button button-secondary button-small" type="button" data-admin-project-section="adminProjectRevenuePanel">연도별 매출</button>
+                </nav>
+            </div>
+            <button class="dialog-close" type="button" data-admin-project-close aria-label="프로젝트 상세 닫기">×</button>
+        </header>
+        <div class="admin-project-dialog-content">
+        <fieldset id="adminProjectDialogFields" class="admin-project-dialog-fields">
     <section id="projectEditorPanel" class="panel" aria-labelledby="projectEditorTitle">
         <div class="panel-header">
             <div>
@@ -189,6 +205,7 @@
                     <span>입찰일</span>
                     <input id="projectBidDate" class="input" type="date">
                 </label>
+                <label class="field"><span>담당 사업부</span><select id="projectDepartmentCode" class="select"><option value="">미지정</option></select><small>외부인력 투입 실적의 귀속 사업부입니다.</small></label>
                 <label class="field field-span">
                     <span>비고</span>
                     <textarea id="projectDescription" class="textarea" maxlength="2000" placeholder="사업 범위, 특이사항 등"></textarea>
@@ -207,6 +224,13 @@
         </form>
     </section>
 
+    <section id="adminProjectRevenuePanel" class="panel" aria-labelledby="adminProjectRevenueTitle">
+        <div class="panel-header"><div><h3 id="adminProjectRevenueTitle">연도별 매출 · VAT 포함</h3><p>세금결산 연도의 매출 합계를 입력합니다. 총수주금액과 별도로 관리하며 개인별 매출단가는 회사 매출에 합산하지 않습니다.</p></div></div>
+        <p id="adminProjectRevenueSummary" class="inline-status"></p>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>사업연차 / 결산연도</th><th>연간 매출액 (원 · VAT 포함)</th><th>결산 내역</th><th>저장</th></tr></thead><tbody id="adminProjectRevenueRows"></tbody></table></div>
+        <div class="admin-project-revenue-add"><label class="field"><span>추가 결산연도</span><input id="adminProjectRevenueAddYear" class="input" type="number" min="1900" max="2100"></label><button id="adminProjectRevenueAdd" class="button button-secondary" type="button">연도 추가</button></div>
+        <p id="adminProjectRevenueStatus" class="inline-status" aria-live="polite">프로젝트를 저장하면 연도별 매출을 입력할 수 있습니다.</p>
+    </section>
     <section id="projectCompanyEditorPanel" class="panel" aria-labelledby="projectCompanyEditorTitle" hidden>
         <div class="panel-header">
             <div>
@@ -234,4 +258,8 @@
         </form>
         <p id="adminProjectCompanyStatus" class="inline-status" aria-live="polite"></p>
     </section>
+        </fieldset>
+        </div>
+        <footer class="dialog-footer"><button class="button button-secondary" type="button" data-admin-project-close>목록으로 돌아가기</button></footer>
+    </dialog>
 </section>

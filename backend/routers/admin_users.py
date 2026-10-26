@@ -28,6 +28,8 @@ from backend.database_errors import raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.department_config import enrich_department, resolve_department
 from backend.passwords import hash_password
+from backend.annual_performance import capture_profile
+from backend.user_history import HistoryWrite, get_history, change_history
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,7 @@ SqlLoader.register_bind_contract(
 
 
 class EmployeeProfileRequest(BaseModel):
+    profileEffectiveDate: date | None = None
     employeeNo: str | None = Field(default=None, max_length=100)
     genderCode: str | None = Field(default=None, max_length=20)
     birthDate: date | None = None
@@ -402,6 +405,7 @@ def create_user(payload: UserCreateRequest):
         if not row:
             raise RuntimeError("Created user could not be reloaded.")
         user_id = int(row[0])
+        capture_profile(cursor, user_id, payload.profileEffectiveDate or min(payload.hireDate or date.today(), date.today()))
         conn.commit()
         return {
             "status": "success",
@@ -560,6 +564,7 @@ def update_user(user_id: int, payload: UserUpdateRequest, request: Request):
                 SqlLoader.get_sql("ADMIN_USER_SESSION_REVOKE"),
                 {"userId": user_id},
             )
+        capture_profile(cursor, user_id, payload.profileEffectiveDate)
         conn.commit()
         invalidate_user_session_cache(user_id)
         return {
@@ -864,3 +869,50 @@ def reset_password(user_id: int):
             cursor.close()
         if conn:
             conn.close()
+
+
+def _history_transaction(callback):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        data = callback(cursor)
+        conn.commit()
+        return {"status": "success", "data": data}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        logger.exception("Employee history request failed.")
+        raise_database_http_error(exc, default_detail="소속·고용 이력을 처리하지 못했습니다.", schema_detail="인사 이력 스키마 적용이 필요합니다.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/{user_id}/history")
+def employee_history(user_id: int):
+    return _history_transaction(lambda cursor: get_history(cursor, user_id))
+
+
+@router.post("/{user_id}/history")
+def create_employee_history(user_id: int, payload: HistoryWrite):
+    if payload.versionToken:
+        raise HTTPException(400, "신규 이력에는 수정 버전을 지정할 수 없습니다.")
+    return _history_transaction(lambda cursor: change_history(cursor, user_id, payload))
+
+
+@router.put("/{user_id}/history/{effective_from}")
+def update_employee_history(user_id: int, effective_from: date, payload: HistoryWrite):
+    return _history_transaction(lambda cursor: change_history(cursor, user_id, payload, effective_from, payload.versionToken))
+
+
+@router.delete("/{user_id}/history/{effective_from}")
+def delete_employee_history(user_id: int, effective_from: date, versionToken: str = Query(max_length=30)):
+    return _history_transaction(lambda cursor: change_history(cursor, user_id, original_day=effective_from, version=versionToken))

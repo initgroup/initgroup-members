@@ -447,6 +447,156 @@
         input.remove();
     }
 
+    function revealEditor(target) {
+        if (!target) return;
+        target.setAttribute("tabindex", "-1");
+        target.scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+            block: "start"
+        });
+        target.focus({ preventScroll: true });
+    }
+
+    function bindDraggableDialog(dialog, handle, signal) {
+        let drag = null;
+        function position(left, top) {
+            const rect = dialog.getBoundingClientRect();
+            dialog.style.margin = "0";
+            dialog.style.left = `${Math.max(8, Math.min(left, window.innerWidth - rect.width - 8))}px`;
+            dialog.style.top = `${Math.max(8, Math.min(top, window.innerHeight - rect.height - 8))}px`;
+        }
+        handle.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0 || event.target.closest("button, input, select, a")) return;
+            const rect = dialog.getBoundingClientRect();
+            drag = { id: event.pointerId, x: event.clientX - rect.left, y: event.clientY - rect.top };
+            handle.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        }, { signal });
+        handle.addEventListener("pointermove", (event) => {
+            if (drag?.id === event.pointerId) position(event.clientX - drag.x, event.clientY - drag.y);
+        }, { signal });
+        function release() { drag = null; }
+        ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => handle.addEventListener(type, release, { signal }));
+        dialog.addEventListener("close", () => {
+            release();
+            ["margin", "left", "top"].forEach((property) => dialog.style.removeProperty(property));
+        }, { signal });
+        window.addEventListener("resize", () => {
+            if (!dialog.open || !dialog.style.left) return;
+            const rect = dialog.getBoundingClientRect();
+            position(rect.left, rect.top);
+        }, { signal });
+    }
+
+    function createDetailDialog({ root, prefix, signal }) {
+        const lifecycle = new AbortController();
+        const dialog = element("dialog", { className: "dialog detail-layer", attrs: { id: `${prefix}Dialog`, "aria-labelledby": `${prefix}Title` } });
+        const title = element("h3", { attrs: { id: `${prefix}Title`, tabindex: "-1" } });
+        const description = element("p");
+        const closeButton = element("button", { text: "×", className: "dialog-close", type: "button", attrs: { "aria-label": "상세 레이어 닫기" } });
+        const header = element("header", { className: "dialog-header" }, [element("div", {}, [title, description]), closeButton]);
+        const body = element("div", { className: "dialog-body detail-layer-body" });
+        const footer = element("footer", { className: "dialog-footer" });
+        dialog.append(header, body, footer); root.appendChild(dialog);
+        let opener = null, contentController = null, destroyed = false;
+        const close = () => { if (dialog.open) dialog.close(); };
+        closeButton.addEventListener("click", close, { signal: lifecycle.signal });
+        dialog.addEventListener("cancel", (event) => { event.preventDefault(); event.stopPropagation(); close(); }, { signal: lifecycle.signal });
+        dialog.addEventListener("close", () => {
+            // A queued close event may arrive after another detail has already reopened.
+            if (dialog.open) return;
+            contentController?.abort(); contentController = null;
+            body.replaceChildren(); footer.replaceChildren();
+            if (opener?.isConnected) opener.focus({ preventScroll: true });
+            opener = null;
+        }, { signal: lifecycle.signal });
+        bindDraggableDialog(dialog, header, lifecycle.signal);
+        function open({ title: heading, description: copy = "", groups = [], actions = [] }) {
+            if (destroyed) return;
+            contentController?.abort(); contentController = new AbortController();
+            title.textContent = heading; description.textContent = copy;
+            body.replaceChildren(); footer.replaceChildren();
+            const search = element("input", { className: "input", type: "search", attrs: { placeholder: "이름·프로젝트·월·사유 검색", "aria-label": "상세 대상 검색" } });
+            const count = element("p", { className: "detail-layer-count", text: `전체 ${groups.length}건` });
+            const list = element("div", { className: "detail-layer-groups" });
+            const nodes = groups.map((group, index) => {
+                const section = element("details", { className: `detail-layer-group${group.severity === "danger" ? " is-danger" : ""}` });
+                section.open = groups.length <= 3 || index === 0;
+                section.appendChild(element("summary", { text: group.title }));
+                const reasons = element("ul", { className: "detail-layer-reasons" });
+                (group.reasons || []).forEach((reason) => reasons.appendChild(element("li", { text: reason })));
+                if (reasons.childElementCount) section.appendChild(reasons);
+                const facts = element("dl", { className: "detail-layer-facts" });
+                (group.facts || []).forEach(([label, value]) => facts.appendChild(element("div", {}, [element("dt", { text: label }), element("dd", { text: value })])));
+                if (facts.childElementCount) section.appendChild(facts);
+                if (group.columns?.length) {
+                    const head = element("tr"); group.columns.forEach((column) => head.appendChild(element("th", { text: column, attrs: { scope: "col" } })));
+                    const rows = element("tbody");
+                    (group.rows || []).forEach((row) => {
+                        const tr = element("tr"); row.forEach((value) => tr.appendChild(element("td", { text: value }))); rows.appendChild(tr);
+                    });
+                    section.appendChild(element("div", { className: "table-wrap" }, [element("table", { className: "data-table" }, [element("thead", {}, [head]), rows])]));
+                }
+                if (group.actions?.length) {
+                    const actionsRow=element("div",{className:"detail-layer-actions"});
+                    group.actions.forEach((action)=>{
+                        const button=element("button",{className:"button button-secondary button-small",text:action.label,type:"button",attrs:{"data-detail-action":action.key || "open"}});
+                        button.addEventListener("click",()=>{close();action.run();},{signal:contentController.signal});
+                        actionsRow.appendChild(button);
+                    });
+                    section.appendChild(actionsRow);
+                }
+                list.appendChild(section);
+                return { node: section, text: section.textContent.toLocaleLowerCase("ko-KR") };
+            });
+            body.append(search, count, list);
+            if (!groups.length) list.appendChild(element("p", { className: "empty-state", text: "상세 대상이 없습니다." }));
+            search.addEventListener("input", () => {
+                const term = search.value.trim().toLocaleLowerCase("ko-KR");
+                let visible = 0;
+                nodes.forEach((item) => { item.node.hidden = !item.text.includes(term); if (!item.node.hidden) visible++; });
+                count.textContent = `전체 ${groups.length}건 중 ${visible}건`;
+            }, { signal: contentController.signal });
+            actions.forEach((action) => {
+                const button = element("button", { className: "button button-secondary", text: action.label, type: "button", attrs: { "data-detail-action": action.key || "open" } });
+                button.addEventListener("click", () => { close(); action.run(); }, { signal: contentController.signal }); footer.appendChild(button);
+            });
+            const done = element("button", { className: "button button-primary", text: "닫기", type: "button" });
+            done.addEventListener("click", close, { signal: contentController.signal }); footer.appendChild(done);
+            if (!dialog.open) { opener = document.activeElement; dialog.showModal(); }
+            body.scrollTop = 0; title.focus({ preventScroll: true });
+        }
+        function destroy() {
+            if (destroyed) return;
+            close(); destroyed = true; contentController?.abort(); lifecycle.abort(); dialog.remove();
+            signal?.removeEventListener("abort", destroy);
+        }
+        signal?.addEventListener("abort", destroy, { once: true });
+        return { open, close, destroy, isOpen: () => dialog.open };
+    }
+
+    function groupWorkloadOverloads(warnings = []) {
+        const people=new Map();
+        warnings.forEach((warning)=>{
+            if (!(Number(warning.totalMm) > 1 + 0.000001)) return;
+            const key=String(warning.workerKey || `NAME:${warning.employeeName || "이름 미정"}`);
+            if (!people.has(key)) people.set(key,{workerKey:key,employeeName:warning.employeeName || "이름 미정",byMonth:new Map()});
+            const person=people.get(key),previous=person.byMonth.get(warning.month);
+            if (!previous || Number(previous.totalMm)<Number(warning.totalMm)) person.byMonth.set(warning.month,warning);
+        });
+        return [...people.values()].map((person)=>{
+            const rows=[...person.byMonth.values()].sort((a,b)=>String(a.month).localeCompare(String(b.month)));
+            const names=new Set(rows.flatMap((row)=>row.projects instanceof Map ? [...row.projects.values()].map((p)=>p.name) : (row.allocations || []).map((a)=>a.projectName)));
+            return {workerKey:person.workerKey,employeeName:person.employeeName,warnings:rows,months:rows.map((r)=>r.month),
+                peakMm:Math.max(...rows.map((r)=>Number(r.totalMm))),projectNames:[...names].filter(Boolean)};
+        }).sort((a,b)=>b.months.length-a.months.length || b.peakMm-a.peakMm || a.employeeName.localeCompare(b.employeeName,"ko"));
+    }
+
+    function workloadMonthList(months = []) {
+        const keys=[...new Set(months)].sort(),multipleYears=new Set(keys.map((month)=>String(month).slice(0,4))).size>1;
+        return keys.map((month)=>`${multipleYears ? `${String(month).slice(0,4)}년 ` : ""}${Number(String(month).slice(5,7))}월`).join(", ");
+    }
+
     window.Common = {
         ApiError,
         asset: {
@@ -471,6 +621,9 @@
             element
         },
         ui: {
+            revealEditor,
+            bindDraggableDialog,
+            createDetailDialog,
             showLoading,
             hideLoading,
             toast,
@@ -483,6 +636,7 @@
             dateTime: formatDateTime,
             dateTimeLocal: toDateTimeLocal
         },
-        copyText
+        copyText,
+        workload: { groupOverloads: groupWorkloadOverloads, monthList: workloadMonthList }
     };
 })();

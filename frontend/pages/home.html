@@ -1,19 +1,19 @@
 <section class="page home-dashboard executive-home" id="page-home" aria-labelledby="homeTitle">
     <header class="page-header executive-home-header">
         <div>
-            <p class="page-kicker">EXECUTIVE BUSINESS CONTROL</p>
+
             <div class="home-title-row">
                 <h2 id="homeTitle">경영 현황</h2>
-                <span id="homeScenarioBadge" class="executive-scenario-badge">계획안 확인 중</span>
+                <span id="homeScenarioBadge" class="executive-scenario-badge">프로젝트 상태 확인 중</span>
             </div>
-            <p id="homeGreeting">사업 파이프라인과 인력계획, 예상 손익을 한눈에 확인하세요.</p>
+
         </div>
         <div class="executive-home-actions">
             <label class="field executive-year-field">
-                <span>기준연도</span>
+                <span class="sr-only">기준연도</span>
                 <select id="homeYearSelect" class="select"></select>
             </label>
-            <button id="homeOpenPlanningButton" class="button button-primary" type="button">연간 계획 열기</button>
+            <button id="homeOpenPlanningButton" class="button button-primary" type="button">사업·인력 보드</button>
             <button id="homeRefreshButton" class="button button-secondary" type="button">새로고침</button>
             <span id="homeUpdatedAt" class="home-updated-at">업데이트 대기</span>
         </div>
@@ -23,26 +23,46 @@
     <div id="homeSchemaWarnings" class="executive-schema-warnings" aria-live="polite" hidden></div>
 
     <section class="executive-kpi-grid" aria-label="경영 핵심 지표">
-        <article class="executive-kpi-card is-pipeline"><span>입찰 검토 대상</span><strong id="homeBidTargetCount">0</strong><small id="homeProjectCountDetail">등록 사업 0건</small></article>
-        <article class="executive-kpi-card is-award"><span id="homeAwardLabel">가중 예상수주</span><strong id="homeWeightedAward">0원</strong><small id="homeAwardDetail">수주 확률 반영</small></article>
-        <article class="executive-kpi-card is-sales"><span id="homeSalesLabel">계획 매출</span><strong id="homePlannedSales">0원</strong><small id="homeSalesDetail">인력 월단가 기준</small></article>
-        <article class="executive-kpi-card is-profit"><span>계획 영업이익</span><strong id="homeOperatingProfit">0원</strong><small id="homeProfitRate">이익률 0%</small></article>
-        <article class="executive-kpi-card is-workforce"><span>계획 투입 / 부족</span><strong><span id="homeAssignmentCount">0</span><em> / </em><span id="homeShortageCount">0</span></strong><small id="homeWorkforceDetail">가용인력 확인 중</small></article>
+        <article class="executive-kpi-card is-target">
+            <span class="executive-kpi-heading">회사 연간 목표 <small id="homeAnnualGoalDetail">달성률 —</small></span>
+            <button id="homeAnnualGoal" class="executive-kpi-value" type="button" aria-label="회사 연간 목표 상세 열기">—</button>
+            <dl class="executive-kpi-breakdown" aria-label="연간 목표 구성">
+                <div><dt>직원 목표</dt><dd><button id="homeStaffTarget" class="executive-kpi-detail" type="button" aria-label="직원 연간 목표 상세 열기">—</button></dd></div>
+                <div><dt>사업부 추가</dt><dd><button id="homeDepartmentTarget" class="executive-kpi-detail" type="button" aria-label="사업부 추가목표 상세 열기">—</button></dd></div>
+                <div><dt>회사 추가</dt><dd><button id="homeCompanyTarget" class="executive-kpi-detail" type="button" aria-label="회사 추가목표 상세 열기">—</button></dd></div>
+            </dl>
+        </article>
+        <article class="executive-kpi-card is-award"><span id="homeAwardLabel">확정 수주금액</span><button id="homeWeightedAward" class="executive-kpi-value" type="button" aria-label="선택 연도 계약 이후 프로젝트 수주 상세 열기">0원</button><small id="homeAwardDetail">계약 이후 사업</small></article>
+        <article class="executive-kpi-card is-sales"><span id="homeSalesLabel">실적 매출</span><button id="homePlannedSales" class="executive-kpi-value" type="button" aria-label="선택 연도 프로젝트 매출 상세 열기">0원</button><small id="homeSalesDetail">선택 연도 투입 매출 합계</small></article>
+        <article class="executive-kpi-card is-profit"><span>관리 순이익</span><button id="homeOperatingProfit" class="executive-kpi-value" type="button" aria-label="선택 연도 매출·원가·회사 비용과 순이익 상세 열기">0원</button>
+            <div class="executive-kpi-meta"><small id="homeProfitRate">이익률 —</small><dl class="executive-kpi-breakdown">
+                <div><dt>인력원가</dt><dd id="homeLaborCost">—</dd></div>
+                <div><dt>회사 기타비용</dt><dd id="homeOtherCost">—</dd></div>
+            </dl></div>
+        </article>
+        <article class="executive-kpi-card is-workforce"><span>확정 투입 / 계획 투입</span><strong><button id="homeAssignmentCount" class="executive-kpi-value" type="button" aria-label="선택 연도 확정 투입 보드 열기">0</button><em> / </em><button id="homeShortageCount" class="executive-kpi-value" type="button" aria-label="선택 연도 계획 투입 보드 열기">0</button></strong><small id="homeWorkforceDetail">등록 투입 확인 중</small></article>
     </section>
 
     <section class="executive-dashboard-grid">
-        <article class="panel executive-monthly-panel" aria-labelledby="homeMonthlyTitle">
-            <div class="panel-header executive-panel-header">
-                <div><p class="panel-kicker">MONTHLY PROFIT OUTLOOK</p><h3 id="homeMonthlyTitle">월별 예상 매출·원가·이익</h3><p>선택한 계획안의 월별 인력단가를 기준으로 계산합니다.</p></div>
-                <div class="executive-chart-legend" aria-label="차트 범례"><span class="is-sales">매출</span><span class="is-cost">원가</span><span class="is-profit">이익</span></div>
-            </div>
-            <div id="homeMonthlyPlan" class="executive-monthly-chart" aria-live="polite"></div>
+        <article class="panel executive-annual-panel" aria-labelledby="homeAnnualRevenueTitle">
+            <header class="executive-chart-toolbar">
+                <h3 id="homeAnnualRevenueTitle">최근 3년 목표·매출·순이익 추이</h3>
+                <div class="executive-chart-controls"><button id="homeHistoricalTotalsButton" class="button button-secondary button-small" type="button">과거 총액 입력</button>
+                <button id="homeFinancialDetailsButton" class="button button-secondary button-small executive-revenue-check" type="button" aria-haspopup="dialog" hidden>매출 미등록</button></div>
+            </header>
+            <div class="executive-chart-meta"><div class="executive-chart-legend" aria-label="최근 3년 추이 범례"><span class="is-target">연간 목표</span><span class="is-sales">매출</span><span class="is-profit">관리 순이익</span></div><p id="homeAnnualRevenueDescription" class="executive-sales-total">선택 연도까지 3년 · VAT 포함</p></div>
+            <div id="homeAnnualRevenueChart" class="executive-annual-revenue-chart" aria-live="polite"></div>
+            <p id="homeFinancialNotice" class="executive-sales-total" aria-live="polite"></p>
+            <details class="executive-revenue-details" id="homeAnnualRevenueDetails"><summary>연도별 금액·선택 연도 프로젝트 · 원</summary>
+                <div class="table-wrap"><table class="data-table"><caption class="sr-only">최근 3년 연간 목표·매출·관리 순이익</caption><thead><tr><th>결산연도</th><th>연간 목표</th><th>매출</th><th>달성률</th><th>관리 순이익</th><th>집계 상태</th></tr></thead><tbody id="homeAnnualTrendBody"></tbody></table></div>
+                <div class="table-wrap"><table class="data-table"><thead><tr><th>프로젝트</th><th>연간 매출 (VAT 포함)</th><th>매출 입력</th></tr></thead><tbody id="homeAnnualRevenueBody"></tbody></table></div>
+            </details>
         </article>
 
         <aside class="panel executive-risk-panel" aria-labelledby="homeRiskTitle">
             <div class="panel-header executive-panel-header">
-                <div><p class="panel-kicker">DECISION &amp; RISK</p><h3 id="homeRiskTitle">확인할 위험</h3><p>계획 확정 전에 해결할 과부하와 인력 부족입니다.</p></div>
-                <span id="homeRiskCount" class="dashboard-section-count">0건</span>
+                <div><p class="panel-kicker">DECISION &amp; RISK</p><h3 id="homeRiskTitle">월 1 M/M 초과투입 인력</h3><p>인력별 초과 월·사유 확인</p></div>
+                <button id="homeRiskCount" class="dashboard-section-count" type="button" aria-label="전체 초과투입 인력 상세 화면 열기">0명</button>
             </div>
             <ul id="homeRiskList" class="executive-risk-list"></ul>
         </aside>
@@ -52,14 +72,14 @@
         <article class="panel" aria-labelledby="homeDecisionTitle">
             <div class="panel-header executive-panel-header">
                 <div><p class="panel-kicker">BID PIPELINE</p><h3 id="homeDecisionTitle">입찰 결정 필요 사업</h3><p>검토·입찰 단계의 사업을 우선순위로 확인하세요.</p></div>
-                <span id="homeDecisionCount" class="dashboard-section-count">0건</span>
+                <button id="homeDecisionCount" class="dashboard-section-count" type="button" aria-haspopup="dialog" aria-label="검토 프로젝트 목록과 사유 보기">0건</button>
             </div>
             <div id="homeDecisionList" class="executive-decision-list"></div>
         </article>
 
         <article class="panel" aria-labelledby="homeWorkforceTitle">
             <div class="panel-header executive-panel-header">
-                <div><p class="panel-kicker">WORKFORCE PORTFOLIO</p><h3 id="homeWorkforceTitle">보유인력 구성</h3><p>내부 임직원과 협력업체 인력 현황입니다.</p></div>
+                <div><p class="panel-kicker">WORKFORCE PORTFOLIO</p><h3 id="homeWorkforceTitle">보유인력 구성</h3><p>내부·협력업체 인력 현황</p></div>
                 <span id="homeWorkforceTotal" class="dashboard-section-count">0명</span>
             </div>
             <div id="homeWorkforceComposition" class="executive-workforce-composition"></div>

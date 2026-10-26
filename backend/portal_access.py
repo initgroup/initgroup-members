@@ -43,6 +43,13 @@ ADMIN_NAVIGATION = [
         "children": [
             {
                 "type": "page",
+                "page": "annual-targets",
+                "label": "연간 목표·실적",
+                "title": "연간 목표·실적",
+                "icon": "◎",
+            },
+            {
+                "type": "page",
                 "page": "admin-projects",
                 "label": "사업·입찰 관리",
                 "title": "사업·입찰 관리",
@@ -54,6 +61,14 @@ ADMIN_NAVIGATION = [
                 "label": "사업·인력 관리",
                 "title": "사업·인력 관리",
                 "icon": "♙",
+            },
+            {
+                "type": "page",
+                "page": "workforce-load-detail",
+                "parentPage": "workforce-management",
+                "label": "인력별 초과투입 상세",
+                "title": "인력별 초과투입 상세",
+                "hidden": True,
             },
         ],
     },
@@ -111,9 +126,11 @@ ADMIN_NAVIGATION = [
 COMMON_PAGE_CODES = ("account", "my-project-assignments")
 ADMIN_PAGE_CODES = (
     "home",
+    "annual-targets",
     "admin-users",
     "admin-projects",
     "workforce-management",
+    "workforce-load-detail",
     "workforce-planning",
     "project-assignments",
     "project-detail-editor",

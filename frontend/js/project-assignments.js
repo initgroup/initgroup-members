@@ -503,6 +503,11 @@
         if (render && root) renderAssignmentBoard();
     }
 
+    function registeredAssignmentStatus(project = currentProject) {
+        const status = String(value(project, "statusCode", "STATUS_CODE") || "PLANNED").toUpperCase();
+        return ["CONTRACTED", "IN_PROGRESS", "COMPLETED"].includes(status) ? "CONFIRMED" : "PLANNED";
+    }
+
     function showBoardDraft(project, worker, workerKeyValue, insertIndex = null) {
         const [workerType, workerId] = workerKeyValue.split(":");
         const projectStart = String(value(project, "projectStartDate", "PROJECT_START_DATE")).slice(0, 10);
@@ -522,7 +527,7 @@
             companyName: value(company, "companyName", "COMPANY_NAME") || "소속 미정",
             assignmentStartDate: projectStart,
             assignmentEndDate: projectEnd,
-            assignmentStatusCode: "CONFIRMED",
+            assignmentStatusCode: registeredAssignmentStatus(project),
             projectCompanyId: value(projectCompany, "projectCompanyId", "PROJECT_COMPANY_ID") || null,
             allocationTypeCode: "MONTHLY",
             defaultMm: 1,
@@ -1324,7 +1329,7 @@
         const { startDate, endDate } = projectPeriod();
         query("#assignmentStartDate").value = startDate;
         query("#assignmentEndDate").value = endDate;
-        query("#assignmentStatusCode").value = "CONFIRMED";
+        query("#assignmentStatusCode").value = registeredAssignmentStatus();
         query("#assignmentId").value = "";
         query("#deleteAssignmentButton").hidden = true;
         query("#assignmentEditorTitle").textContent = "투입인력 등록";
@@ -1347,7 +1352,7 @@
         renderAssignmentEmployees(workerValue, item);
         query("#assignmentStartDate").value = String(value(item, "assignmentStartDate", "ASSIGNMENT_START_DATE")).slice(0, 10);
         query("#assignmentEndDate").value = String(value(item, "assignmentEndDate", "ASSIGNMENT_END_DATE")).slice(0, 10);
-        query("#assignmentStatusCode").value = value(item, "assignmentStatusCode", "ASSIGNMENT_STATUS_CODE") || "CONFIRMED";
+        query("#assignmentStatusCode").value = registeredAssignmentStatus();
         query("#assignmentAllocationType").value = value(item, "allocationTypeCode", "ALLOCATION_TYPE_CODE") || "MONTHLY";
         query("#assignmentDefaultMm").value = String(value(item, "defaultMm", "DEFAULT_MM") ?? 1);
         query("#assignmentCostUnitPrice").value = value(item, "costUnitPrice", "COST_UNIT_PRICE") || 0;
@@ -1389,7 +1394,7 @@
         try {
             await Common.api.request(`/project-assignments/${encodeURIComponent(projectId)}/assignments${id ? `/${encodeURIComponent(id)}` : ""}`, {
                 method: id ? "PUT" : "POST",
-                body: { employeeUserId: workerType === "USER" ? Number(workerId) : null, companyEmployeeId: workerType === "COMPANY_EMPLOYEE" ? Number(workerId) : null, projectCompanyId: Number(query("#assignmentCompany").value), assignmentStartDate: query("#assignmentStartDate").value, assignmentEndDate: query("#assignmentEndDate").value, assignmentStatusCode: query("#assignmentStatusCode").value, allocationTypeCode: query("#assignmentAllocationType").value, defaultMm: query("#assignmentDefaultMm").value, weeklyDayCodes: [...root.querySelectorAll("#assignmentWeekdays input:checked")].map((input) => input.value), monthlyAllocations: allocations, costUnitPrice: query("#assignmentCostUnitPrice").value, salesUnitPrice: query("#assignmentSalesUnitPrice").value, projectRoleName: query("#assignmentProjectRoleName").value.trim(), primaryDuty: query("#assignmentPrimaryDuty").value.trim(), note: query("#assignmentNote").value.trim(), versionToken: id ? event.currentTarget.dataset.versionToken : null },
+                body: { employeeUserId: workerType === "USER" ? Number(workerId) : null, companyEmployeeId: workerType === "COMPANY_EMPLOYEE" ? Number(workerId) : null, projectCompanyId: Number(query("#assignmentCompany").value), assignmentStartDate: query("#assignmentStartDate").value, assignmentEndDate: query("#assignmentEndDate").value, assignmentStatusCode: query("#assignmentStatusCode").value, allocationTypeCode: query("#assignmentAllocationType").value, defaultMm: query("#assignmentDefaultMm").value, weeklyDayCodes: [...root.querySelectorAll("#assignmentWeekdays input:checked")].map((input) => input.value), monthlyAllocations: allocations, costUnitPrice: query("#assignmentCostUnitPrice").value, salesUnitPrice: query("#assignmentSalesUnitPrice").value || "0", projectRoleName: query("#assignmentProjectRoleName").value.trim(), primaryDuty: query("#assignmentPrimaryDuty").value.trim(), note: query("#assignmentNote").value.trim(), versionToken: id ? event.currentTarget.dataset.versionToken : null },
                 signal: controller.signal,
                 showLoading: false
             });

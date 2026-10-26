@@ -74,6 +74,7 @@
                 <h3 id="userEditorTitle">임직원 등록</h3>
                 <p id="userEditorDescription">새 임직원을 등록하고 있습니다.</p>
             </div>
+            <button id="adminUsersHistoryJump" class="button button-secondary" type="button" hidden>소속·고용 이력 보기</button>
         </div>
         <form id="userForm">
             <input id="userId" type="hidden">
@@ -128,6 +129,10 @@
 
                     <h4 class="form-section-title">재직 정보</h4>
                     <div class="form-grid user-form-grid">
+                        <label class="field">
+                            <span>소속·고용정보 적용일</span>
+                            <input id="userProfileEffectiveDate" class="input" type="date" title="비워 두면 오늘부터 적용합니다. 마감월의 과거 기록은 변경되지 않습니다.">
+                        </label>
                         <label class="field">
                             <span>사번</span>
                             <input id="userEmployeeNo" class="input" type="text" maxlength="100" autocomplete="off">
@@ -245,6 +250,24 @@
                 <button id="saveUserButton" class="button button-primary" type="submit">저장</button>
             </div>
         </form>
+        <section id="adminUsersHistoryPanel" class="admin-users-history" hidden aria-labelledby="adminUsersHistoryTitle">
+            <h3 id="adminUsersHistoryTitle">소속·고용 이력</h3>
+            <p>적용일부터 다음 이력 전날까지 유효합니다. 현재 이력을 바꾸면 위 기본정보도 함께 변경됩니다. 마감월에 영향을 주는 이력은 보존됩니다.</p>
+            <p id="adminUsersHistoryStatus" class="inline-status" aria-live="polite"></p>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>적용일</th><th>사업부</th><th>고용형태</th><th>재직상태</th><th>입사일</th><th>퇴사일</th><th>기록 구분</th><th>관리</th></tr></thead><tbody id="adminUsersHistoryRows"></tbody></table></div>
+            <form id="adminUsersHistoryForm">
+                <h4 id="adminUsersHistoryEditorTitle">이력 추가</h4>
+                <div class="admin-users-history-fields">
+                    <label class="field"><span>적용일</span><input id="adminUsersHistoryFrom" type="date" class="input" required></label>
+                    <label class="field"><span>사업부</span><select id="adminUsersHistoryDept" class="select" required></select></label>
+                    <label class="field"><span>고용형태</span><select id="adminUsersHistoryType" class="select" required></select></label>
+                    <label class="field"><span>재직상태</span><select id="adminUsersHistoryState" class="select" required></select></label>
+                    <label class="field"><span>입사일</span><input id="adminUsersHistoryHire" type="date" class="input"></label>
+                    <label class="field"><span>퇴사일</span><input id="adminUsersHistoryRetire" type="date" class="input"></label>
+                </div>
+                <div class="form-actions"><button id="adminUsersHistoryNew" class="button button-secondary" type="button">새 이력 입력</button><button class="button button-primary" type="submit">이력 저장</button></div>
+            </form>
+        </section>
     </section>
 
     <dialog id="resetPasswordDialog" class="dialog" aria-labelledby="resetPasswordDialogTitle">

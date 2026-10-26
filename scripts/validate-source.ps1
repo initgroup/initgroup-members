@@ -127,7 +127,9 @@ print('DB connection lifecycle contract OK')
 from backend.database_helper import SqlLoader
 import backend.routers.admin_companies  # Registers company employee DML contracts.
 import backend.routers.admin_users  # Registers employee profile DML contracts.
+import backend.routers.admin_projects  # Registers project master DML contracts.
 import backend.routers.project_assignments  # Registers critical assignment DML contracts.
+import backend.routers.annual_targets  # Registers targets, history and closing contracts.
 
 registered = SqlLoader.bind_contract_count()
 if registered <= 0:
@@ -178,7 +180,7 @@ if alt_path.exists():
                 f'DDL/ALT column order mismatch for {table_name}: '
                 f'{ddl_tables[table_name]} != {alt_tables[table_name]}'
             )
-        if table_name in alt_add_columns and ddl_tables[table_name] != alt_add_columns[table_name]:
+        if table_name in alt_add_columns and ddl_tables[table_name][-len(alt_add_columns[table_name]):] != alt_add_columns[table_name]:
             raise RuntimeError(
                 f'DDL/ALT ADD column order mismatch for {table_name}: '
                 f'{ddl_tables[table_name]} != {alt_add_columns[table_name]}'

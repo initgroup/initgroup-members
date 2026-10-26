@@ -1,0 +1,21 @@
+<section class="page workforce-load-detail" id="page-workforce-load-detail" aria-labelledby="workforceLoadDetailTitle">
+    <nav class="workforce-load-detail-breadcrumb" aria-label="현재 위치">
+        <span>사업·계획</span><span aria-hidden="true">›</span>
+        <button id="workforceLoadDetailParent" type="button">사업·인력 관리</button><span aria-hidden="true">›</span>
+        <button id="workforceLoadDetailOverview" type="button" hidden>초과투입 인력</button><span id="workforceLoadDetailPersonSeparator" aria-hidden="true" hidden>›</span>
+        <span id="workforceLoadDetailCurrent" aria-current="page">초과투입 인력</span>
+    </nav>
+    <header class="page-header">
+        <div><p id="workforceLoadDetailOrigin" class="workforce-load-detail-origin">사업·인력 관리의 상세 화면</p><h2 id="workforceLoadDetailTitle">인력별 초과투입 상세</h2><p>월 합계 1 M/M을 초과한 월과 원인 배치를 확인합니다. 저장된 계획·확정 투입 기준입니다.</p></div>
+        <button id="workforceLoadDetailBack" class="button button-secondary" type="button">사업·인력 관리로 돌아가기</button>
+    </header>
+    <form id="workforceLoadDetailForm" class="workforce-load-detail-toolbar">
+        <label class="field"><span>기준연도</span><input id="workforceLoadDetailYear" class="input" type="number" min="1900" max="2100" required></label>
+        <button id="workforceLoadDetailRefresh" class="button button-primary" type="submit">조회</button>
+        <button id="workforceLoadDetailAll" class="button button-secondary" type="button" hidden>전체 초과투입 인력</button>
+    </form>
+    <p id="workforceLoadDetailStatus" class="inline-status" aria-live="polite"></p>
+    <section id="workforceLoadDetailSummary" class="panel" aria-live="polite"></section>
+    <ul id="workforceLoadDetailPeople" class="workforce-management-alert-list"></ul>
+    <div id="workforceLoadDetailMonths" class="workforce-load-detail-months"></div>
+</section>

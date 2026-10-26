@@ -16,6 +16,7 @@ from backend.database import get_db_connection
 from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
 from backend.department_config import enrich_department
+from backend.project_lifecycle import assignment_status
 
 
 logger = logging.getLogger(__name__)
@@ -340,13 +341,15 @@ def _ensure_company_share(cursor, project_id: int, company_id: int | None, share
         raise HTTPException(status_code=400, detail="참여회사 비중 합계는 100%를 초과할 수 없습니다.")
 
 
-def _lock_project(cursor, project_id: int) -> None:
+def _lock_project(cursor, project_id: int) -> str:
     cursor.execute(
         SqlLoader.get_sql("PROJECT_ASSIGNMENT_PROJECT_LOCK"),
         {"projectId": project_id},
     )
-    if not cursor.fetchone():
+    row = cursor.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+    return str(row[1])
 
 
 def _ensure_version(
@@ -606,7 +609,8 @@ def _save_assignment(project_id: int, assignment_id: int | None, payload: Assign
         conn = get_db_connection()
         cursor = conn.cursor()
         params = _assignment_params(payload)
-        _lock_project(cursor, project_id)
+        status = _lock_project(cursor, project_id)
+        params["assignmentStatusCode"] = assignment_status(status)
         if assignment_id is not None:
             _ensure_version(
                 cursor,
@@ -672,7 +676,7 @@ def create_assignments_batch(
         cursor = conn.cursor()
         insert_cursor = conn.cursor()
         insert_cursor.setinputsizes(monthlyAllocationJson=oracledb.DB_TYPE_CLOB)
-        _lock_project(cursor, project_id)
+        status = _lock_project(cursor, project_id)
         cursor.execute(
             SqlLoader.get_sql("PROJECT_ASSIGNMENT_NEXT_DISPLAY_ORDER"),
             {"projectId": project_id},
@@ -682,6 +686,7 @@ def create_assignments_batch(
         assignment_ids = []
         for index, assignment in enumerate(payload.assignments):
             params = _assignment_params(assignment)
+            params["assignmentStatusCode"] = assignment_status(status)
             _ensure_company(cursor, project_id, assignment.projectCompanyId)
             _ensure_person(cursor, project_id, assignment)
             output = insert_cursor.var(oracledb.DB_TYPE_NUMBER)

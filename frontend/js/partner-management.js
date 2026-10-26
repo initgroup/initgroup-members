@@ -89,6 +89,7 @@
         query("#partnerEmployeeTechnicalGradeCode").value = String(value(employee, "technicalGradeCode", "TECHNICAL_GRADE_CODE") || "").toUpperCase();
         query("#partnerEmployeeCareerMonths").value = value(employee, "careerMonths", "CAREER_MONTHS") ?? "";
         query("#partnerEmployeeNote").value = value(employee, "note", "NOTE") || ""; query("#deletePartnerEmployeeButton").hidden = false;
+        Common.ui.revealEditor(query("#partnerEmployeeForm"));
     }
 
     async function loadEmployees(company) {
@@ -107,6 +108,7 @@
         query("#partnerWebsiteUrl").value = value(company, "websiteUrl", "WEBSITE_URL") || ""; query("#partnerEstablishedDate").value = dateValue(value(company, "establishedDate", "ESTABLISHED_DATE"));
         query("#partnerUseYn").value = value(company, "useYn", "USE_YN") || "Y"; query("#partnerNote").value = value(company, "note", "NOTE") || ""; query("#deletePartnerButton").hidden = false;
         updateSelectedCompanyRow();
+        Common.ui.revealEditor(query("#partnerForm"));
         loadEmployees(company).catch((error) => Common.ui.setInlineStatus(query("#partnerEmployeeStatus"), error.message, "error"));
     }
 

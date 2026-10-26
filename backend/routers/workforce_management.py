@@ -181,6 +181,7 @@ def bootstrap(
             "status": "success",
             "data": {
                 "planYear": planYear,
+                "classificationBasis": "PROJECT_STATUS",
                 "establishmentYear": confirmed_data["establishmentYear"],
                 "departments": [dict(item) for item in departments()],
                 "confirmed": confirmed_data["confirmed"],

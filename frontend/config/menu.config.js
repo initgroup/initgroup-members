@@ -1,3 +1,5 @@
+// Administrator menus and both page-file lists, including annual-targets and workforce-load-detail,
+// are supplied by the authenticated server (backend/portal_access.py).
 window.MENU_CONFIG = [
     {
         type: "group",

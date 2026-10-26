@@ -250,6 +250,7 @@
         if (!state.user || requiresPasswordChange()) return;
 
         (window.MENU_CONFIG || []).forEach((item) => {
+            if (item.hidden) return;
             if (item.type === "page") {
                 if (isAllowed(item)) navigation.appendChild(pageLink(item));
                 return;
@@ -257,7 +258,7 @@
 
             if (item.type === "group") {
                 if (!isAllowed(item)) return;
-                const children = (item.children || []).filter(isAllowed);
+                const children = (item.children || []).filter((child) => !child.hidden && isAllowed(child));
                 if (!children.length) return;
 
                 const section = Common.dom.element("section", {
@@ -277,10 +278,13 @@
     function updateNavigationState(pageCode) {
         const navigation = document.getElementById("appNavigation");
         if (!navigation) return;
+        const parentPage = getPage(pageCode)?.parentPage;
         navigation.querySelectorAll(".nav-link[data-page]").forEach((link) => {
             const linkPage = link.dataset.page || "";
             if (linkPage === pageCode) {
                 link.setAttribute("aria-current", "page");
+            } else if (linkPage === parentPage) {
+                link.setAttribute("aria-current", "location");
             } else {
                 link.removeAttribute("aria-current");
             }
