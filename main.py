@@ -23,6 +23,7 @@ from backend.auth_context import (
 from backend.database import close_db_pool, initialize_db_pool
 from backend.portal_access import ADMIN_PAGE_CODES
 from backend.rate_limit import check_auth_rate_limit
+from backend.site_identity import SITE_NAME
 from backend.routers import (
     account,
     admin_companies,
@@ -64,7 +65,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title=os.getenv("APP_NAME", "INIT Members"),
+    title=SITE_NAME,
     lifespan=lifespan,
 )
 
@@ -382,7 +383,7 @@ def health():
     return {
         "status": "success",
         "message": "API server is running.",
-        "appName": os.getenv("APP_NAME", "INIT Members"),
+        "appName": SITE_NAME,
     }
 
 

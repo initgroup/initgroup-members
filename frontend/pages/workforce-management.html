@@ -6,6 +6,7 @@
             <p>계획·입찰은 계획, 계약·진행·완료는 확정으로 자동 구분합니다. 한 번 등록한 투입정보를 사용하며 취소 사업은 제외합니다.</p>
         </div>
         <div class="workforce-management-header-actions">
+            <button id="workforceManagementAnnualReturn" class="button button-secondary" type="button" hidden>연간 참고 지표로 돌아가기</button>
             <button id="workforceManagementRefreshButton" class="button button-secondary" type="button" data-workforce-saved-refresh><span aria-hidden="true">↻</span> 새로고침</button>
         </div>
     </header>
@@ -158,7 +159,7 @@
                     <label class="field"><span>개인 비교용 매출단가 (선택 · 원 / M/M)</span><input id="workforceManagementQuickSales" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickPriceHelp"></label>
                     <label class="field" data-workforce-admin-cost><span>원가단가 (원 / M/M)</span><input id="workforceManagementQuickCost" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickPriceHelp"></label>
                 </div>
-                <p id="workforceManagementQuickPriceHelp" class="workforce-management-quick-period-note">매출단가는 개인 목표 대비 참고매출(M/M × 단가) 계산용 선택 항목입니다. 회사 매출은 사업·입찰 관리의 연도별 매출액으로 계산합니다. 원가단가는 인력원가에 반영됩니다.</p>
+                <p id="workforceManagementQuickPriceHelp" class="workforce-management-quick-period-note">매출단가(원/M/M · VAT 별도)를 입력하고 ‘저장하고 보드 반영’을 누르면 연간 목표·실적의 개인 참고매출·참고 달성률·참고손익에 반영됩니다. 회사 매출은 사업·입찰 관리의 연도별 매출액으로 계산합니다. 원가단가는 전체 인력원가에 반영됩니다.</p>
                 <div class="workforce-management-quick-period">
                     <label class="field"><span id="workforceManagementQuickStatusLabel">투입 구분 · 진행상태 자동 적용</span><select id="workforceManagementQuickAssignmentStatus" class="select" required><option value="CONFIRMED">확정 투입</option><option value="PLANNED">계획 투입</option></select></label>
                     <label class="field"><span>투입 시작일</span><input id="workforceManagementQuickStart" class="input" type="date" required></label>

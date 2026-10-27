@@ -1,6 +1,7 @@
 (function() {
     "use strict";
     let root, controller, data, drafts, busy = false, sequence = 0;
+    let rateDetails = null, rateNavigationPending = false;
     const dirty = new Set();
     const sections = {
         staff: { form: "Staff", label: "직원 목표" },
@@ -65,6 +66,76 @@
         return tr;
     }
 
+    function workerFacts(worker) {
+        return (data.performance.facts || []).filter((fact) => fact.phase === "confirmed"
+            && fact.workerKey === worker.key && fact.department === worker.department
+            && fact.employmentType === worker.employmentType);
+    }
+
+    function referenceValue(value, incomplete) {
+        const node = el("span", value);
+        if (incomplete) node.append(el("small", "일부 단가 미입력"));
+        return node;
+    }
+
+    async function editReferenceRate(fact) {
+        rateNavigationPending = true;
+        try {
+            await App.navigate("workforce-management", { context: {
+                planYear: data.year, phase: "confirmed", projectId: fact.projectId,
+                assignmentId: fact.assignmentId, priceField: "sales", returnPage: "annual-targets"
+            } });
+        } finally { rateNavigationPending = false; }
+    }
+
+    function openWorkerRates(worker) {
+        const groups = new Map();
+        workerFacts(worker).forEach((fact) => {
+            const editable = !data.performance.closed && fact.rateEditable !== false && Boolean(fact.assignmentId);
+            const key = JSON.stringify([fact.assignmentId, fact.projectId, fact.salesUnitPrice ?? null, editable]);
+            if (!groups.has(key)) groups.set(key, { fact, editable, items: [] });
+            groups.get(key).items.push(fact);
+        });
+        rateDetails.open({
+            title: `${worker.name} · ${data.year}년 개인 참고매출 단가`,
+            description: "확정 투입 기준 · VAT 별도. 매출단가는 원/M/M입니다. 단가 저장 후 ‘연간 참고 지표로 돌아가기’를 누르면 재계산됩니다. 참고손익에서는 단가 미입력 투입의 원가도 차감합니다.",
+            groups: [...groups.values()].map(({ fact, editable, items }) => ({
+                title: `${fact.projectName} · 투입 #${fact.assignmentId || "마감 기록"}`,
+                reasons: [items.some((item) => item.salesRateProvided === false)
+                    ? "매출단가가 미입력되어 이 투입의 참고매출은 계산되지 않았습니다."
+                    : "저장한 매출단가와 월별 투입 M/M으로 참고매출을 계산합니다.",
+                    ...(!editable ? ["마감 당시 기록입니다. 이 화면에서 단가를 변경하지 않습니다."] : [])],
+                facts: [["매출단가 (원/M/M)", fact.salesUnitPrice == null ? "마감 자료 참고" : BigInt(fact.salesUnitPrice || 0) > 0n ? money(fact.salesUnitPrice) : "미입력"],
+                    ["선택 연도 투입 M/M", String(Number(items.reduce((sum, item) => sum + Number(item.mm || 0), 0).toFixed(4)))]],
+                columns: ["월", "투입 M/M", "참고매출", "인력원가"],
+                rows: items.map((item) => [item.month, String(Number(Number(item.mm || 0).toFixed(4))), money(item.salesAmount), money(item.costAmount)]),
+                actions: editable ? [{ key: `sales-${fact.assignmentId}`, label: fact.salesRateProvided === false ? "매출단가 입력" : "매출단가 확인·수정", run: () => editReferenceRate(fact) }] : []
+            }))
+        });
+    }
+
+    function renderWorker(worker, container) {
+        const facts = workerFacts(worker);
+        const hasAssignments = worker.salesReferenceAssignmentCount == null ? facts.length > 0 : worker.salesReferenceAssignmentCount > 0;
+        const available = worker.salesReferenceAvailable !== false;
+        const incomplete = available && worker.salesReferenceIncomplete === true;
+        const action = el("span", data.performance.closed ? "마감 기록" : "확정 투입 없음");
+        if (hasAssignments || facts.length) {
+            const missing = worker.salesReferenceMissingAssignmentCount || 0;
+            const readOnly = data.performance.closed || (facts.length > 0 && facts.every((fact) => fact.rateEditable === false));
+            const button = el("button", readOnly ? "마감 단가 보기" : missing ? `단가 입력 (${missing}건)` : "단가 확인·수정", "button button-secondary button-small");
+            button.type = "button";
+            button.setAttribute("aria-haspopup", "dialog");
+            button.setAttribute("aria-label", `${worker.name} · ${data.year}년 매출단가 확인 및 입력`);
+            button.addEventListener("click", () => openWorkerRates(worker), { signal: controller.signal });
+            action.replaceChildren(button);
+        }
+        row(container, [worker.name, worker.departmentName || departmentName(worker.department), labels[worker.employmentType] || worker.employmentType,
+            money(worker.targetAmount), available ? referenceValue(money(worker.salesAmount), incomplete) : "단가 입력 필요",
+            available ? referenceValue(rate(worker.salesAmount, worker.targetAmount), incomplete) : "계산 대기",
+            money(worker.costAmount), available ? referenceValue(money(BigInt(worker.salesAmount) - BigInt(worker.costAmount)), incomplete) : "계산 대기", action]);
+    }
+
     function renderReports() {
         const summary = data.performance.summary;
         const historical=data.performance.revenueBasis==="HISTORICAL_TOTALS";
@@ -83,7 +154,7 @@
         const deptBody = query("#annualTargetsDepartments"); deptBody.replaceChildren();
         data.performance.departments.forEach((d) => row(deptBody, [d.name, money(d.staffTargetAmount), money(d.extraTargetAmount), money(d.targetAmount), money(d.staffSalesAmount), money(d.contractSalesAmount), money(d.unattributedSalesAmount || 0), money(d.salesAmount), rate(d.salesAmount, d.targetAmount), money(d.costAmount), money(BigInt(d.salesAmount) - BigInt(d.costAmount))]));
         const workerBody = query("#annualTargetsWorkers"); workerBody.replaceChildren();
-        data.performance.workers.forEach((w) => row(workerBody, [w.name, w.departmentName || departmentName(w.department), labels[w.employmentType] || w.employmentType, money(w.targetAmount), w.salesReferenceAvailable===false ? "선택단가 미입력" : `${money(w.salesAmount)}${w.salesReferenceIncomplete ? " (일부 투입)" : ""}`, w.salesReferenceAvailable===false ? "—" : rate(w.salesAmount, w.targetAmount), money(w.costAmount), w.salesReferenceAvailable===false ? "—" : money(BigInt(w.salesAmount) - BigInt(w.costAmount))]));
+        data.performance.workers.forEach((worker) => renderWorker(worker, workerBody));
         const body = query("#annualTargetsYearResult"); body.replaceChildren();
         row(body, [data.year, data.performance.targetRecorded===false?"미설정":money(summary.targetAmount), money(summary.salesAmount), rate(summary.salesAmount, summary.targetAmount), historical?"상세 없음":money(summary.costAmount), historical?"상세 없음":money(summary.otherCost), summary.netProfit==null?"미입력":money(summary.netProfit), historical?"과거 총액 소급":data.performance.revenueBasis === "PROJECT_YEAR" ? "프로젝트 연도별 매출" : "마감 당시 기준"]);
         query("#annualTargetsCloseYear").disabled = data.performance.closed || data.year >= new Date().getFullYear() || !data.saved;
@@ -248,6 +319,7 @@
 
     async function load() {
         if (busy) return;
+        rateDetails?.close();
         if (dirty.size && !(await Common.ui.confirm("저장하지 않은 변경을 버리고 조회할까요?"))) { query("#annualTargetsYear").value = data.year; return; }
         const id = ++sequence;
         await run(async () => {
@@ -300,12 +372,19 @@
         const views={historical:"annualTargetsHistoricalForm",staff:"annualTargetsStaffForm","department-extra":"annualTargetsDeptForm","company-extra":"annualTargetsCompanyForm",reports:"annualTargetsReports",company:"annualTargetsCompanyResults",projects:"annualTargetsProjectResults"};
         if (views[route.view]) Common.ui.revealEditor(query(`#${views[route.view]}`));
         if(route.view==="historical") query("#annualTargetsHistoricalForm input:not(:disabled)")?.focus({preventScroll:true});
+        if (route.view === "workers") {
+            const details = query("#annualTargetsWorkerReferences");
+            details.open = true;
+            Common.ui.revealEditor(details);
+        }
     }
 
     window.Pages = window.Pages || {};
     window.Pages["annual-targets"] = {
         async init(context) {
             root = context.root; controller = new AbortController(); data = null; drafts = null; dirty.clear(); busy = false;
+            rateNavigationPending = false;
+            rateDetails = Common.ui.createDetailDialog({ root, prefix: "annualTargetsRates", signal: controller.signal });
             query("#annualTargetsYear").value = context.routeContext?.planYear || new Date().getFullYear();
             query("#annualTargetsRefresh").addEventListener("click", load, { signal: controller.signal });
             Object.keys(sections).forEach((section) => query(`#annualTargets${sections[section].form}Form`).addEventListener("submit", (event) => save(section, event), { signal: controller.signal }));
@@ -324,10 +403,26 @@
                 query("#annualTargetsYear").value=String(year);
                 await load();
             } else if (!dirty.size) await load();
+            else await run(async () => {
+                const id = ++sequence;
+                const fresh = Common.data.get(await Common.api.request(`/planning/annual-targets/${data.year}`, { signal: controller.signal }));
+                if (!root || id !== sequence) return;
+                // Keep every editing draft and its original revision; only refresh reports.
+                data = { ...data, performance: fresh.performance, projects: fresh.projects };
+                renderReports(); updatePreview();
+                status("미저장 목표·비용과 원래 버전을 유지하고 참고 지표를 갱신했습니다.");
+            });
             if (!year || year===Number(data?.year)) revealRouteView(context.routeContext);
         },
         hasUnsavedChanges() { return dirty.size > 0; },
-        async beforeLeave() { if (busy) return false; return !dirty.size || await Common.ui.confirm("저장하지 않은 변경을 버리고 이동할까요?"); },
-        destroy() { sequence++; controller?.abort(); controller = null; root = null; data = null; drafts = null; dirty.clear(); }
+        async beforeLeave(context = {}) {
+            if (busy) return false;
+            if (rateNavigationPending && context.nextPageCode === "workforce-management" && context.preservesState) { rateDetails?.close(); return true; }
+            const allowed = !dirty.size || await Common.ui.confirm("저장하지 않은 변경을 버리고 이동할까요?");
+            if (allowed) rateDetails?.close();
+            return allowed;
+        },
+        deactivate() { rateDetails?.close(); },
+        destroy() { sequence++; rateDetails?.destroy(); rateDetails = null; controller?.abort(); controller = null; root = null; data = null; drafts = null; dirty.clear(); }
     };
 })();

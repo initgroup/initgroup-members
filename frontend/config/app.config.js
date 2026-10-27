@@ -1,17 +1,17 @@
-window.APP_NAME = "INIT Members";
+window.APP_NAME = "(주) 인아이티 경영정보 시스템";
 
 // 정적 자산 변경 배포 시 이 값을 올려 브라우저 캐시 URL을 갱신합니다.
-window.APP_ASSET_VERSION = "20260820.12";
+window.APP_ASSET_VERSION = "20261027.4";
 
 window.DEFAULT_HOMEPAGE_SKIN = "national-intelligence";
 
 window.APP_SKIN_TEMPLATES = [
     {
         code: "national-intelligence",
-        name: "INIT Members",
+        name: "(주) 인아이티 경영정보 시스템",
         badge: "대표 추천",
         description: "인아이티 경영진 포털의 신뢰감과 안정감을 표현한 네이비·시안 스킨",
-        eyebrow: "INIT MEMBERS ONLY",
+        eyebrow: "ADMINISTRATORS ONLY",
         titleLines: ["함께 일하는 인아이티,", "업무와 소식을 한곳에서"],
         heroDescription: "입찰 파이프라인, 프로젝트 손익과 차년도 인력계획을 안전하게 검토하는 인아이티 경영진 전용 업무공간입니다.",
         signalLabel: "INTERNAL SERVICE STATUS",

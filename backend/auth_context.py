@@ -263,9 +263,15 @@ def _row_to_user(row) -> dict[str, Any]:
     }
 
 
+def _require_admin_session(user: dict[str, Any]) -> None:
+    if str(user.get("roleCode") or "").strip().upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="관리자 등급의 계정만 로그인할 수 있습니다.")
+
+
 def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, Any]:
     cached = getattr(request.state, "auth_user", None)
     if cached:
+        _require_admin_session(cached)
         return cached
 
     token = _get_session_token(request)
@@ -276,6 +282,7 @@ def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, A
     now = time.monotonic()
     user = _cached_session(token_hash, touch=touch, now=now)
     if user:
+        _require_admin_session(user)
         request.state.auth_session_touched = False
         request.state.auth_user = user
         return user
@@ -285,6 +292,7 @@ def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, A
         now = time.monotonic()
         user = _cached_session(token_hash, touch=touch, now=now)
         if user:
+            _require_admin_session(user)
             request.state.auth_session_touched = False
             request.state.auth_user = user
             return user
@@ -305,6 +313,7 @@ def authenticate_request(request: Request, *, touch: bool = True) -> dict[str, A
                 invalidate_session_cache(token_hash)
                 raise HTTPException(status_code=401, detail="로그인 세션이 만료되었거나 유효하지 않습니다.")
             user = _row_to_user(row)
+            _require_admin_session(user)
             with _session_cache_lock:
                 previous = _session_cache.get(token_hash)
             touch_interval = get_session_touch_interval_seconds()

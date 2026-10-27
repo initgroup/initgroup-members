@@ -1335,32 +1335,36 @@ body.app-booting .app-boot-screen {
     display: flex;
     align-items: center;
     min-height: var(--header-height);
-    padding: 16px 20px;
-    gap: 12px;
+    padding: 16px 14px;
+    gap: 10px;
     border-bottom: 1px solid rgb(148 163 184 / 0.16);
     font-weight: 750;
     letter-spacing: -0.02em;
 }
 
 .app-brand-logo {
-    width: 88px;
-    height: 30px;
+    width: 40px;
+    height: 16px;
+    flex: 0 0 40px;
     object-fit: contain;
     object-position: left center;
     filter: brightness(0) invert(1);
 }
 
 .app-brand-logo + span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
+    min-width: 0;
+    color: #fff;
+    font-size: 1.4rem;
+    font-weight: 850;
+    line-height: 1.25;
+    letter-spacing: -0.045em;
+    white-space: nowrap;
 }
 
 .sidebar-close {
     width: 44px;
     min-height: 44px;
+    flex-shrink: 0;
     margin-left: auto;
     padding: 0;
     border: 1px solid rgb(255 255 255 / 0.16);
@@ -1515,6 +1519,12 @@ body.app-booting .app-boot-screen {
     margin: 0 0 2px;
     color: var(--color-muted);
     font-size: 0.75rem;
+}
+
+.app-amount-basis {
+    margin: 3px 0 0;
+    color: var(--color-muted);
+    font-size: 0.7rem;
 }
 
 .header-user-name {
@@ -4846,7 +4856,6 @@ body.auth-screen .page-host {
         font-size: 1.08rem;
     }
 
-    .app-header-eyebrow,
     .header-user-name,
     #refreshPageButton {
         display: none;

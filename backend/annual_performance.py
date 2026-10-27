@@ -177,7 +177,9 @@ def assignment_facts(source):
                               "department": department, "employmentType": employment,
                               "category": "staff" if employment in STAFF_TYPES else "contract", "phase": phase,
                               "mm": float(mm * group["days"] / len(days)), "salesAmount": str(sale), "costAmount": str(expense),
-                              "salesRateProvided": sales > 0, "attributionMm": str(mm * group["days"] / len(days))})
+                              "salesRateProvided": sales > 0, "salesUnitPrice": str(int(sales)), "costUnitPrice": str(int(cost)),
+                              "rateEditable": month not in source.get("closed", {}),
+                              "attributionMm": str(mm * group["days"] / len(days))})
     return facts, sorted(warnings)
 
 
@@ -216,11 +218,12 @@ def report(source):
     live_facts, warnings = assignment_facts(source)
     facts = [fact for fact in live_facts if fact["month"] not in source["closed"]]
     # Prior monthly closes remain immutable evidence for annual actuals.
-    facts += [dict(fact) for month in source["closed"].values() for fact in month.get("facts", [])]
+    facts += [{**fact, "rateEditable": False} for month in source["closed"].values() for fact in month.get("facts", [])]
     labels = {row["code"]: row["label"] for row in departments()}
     labels["UNASSIGNED"] = "미지정"
     depts = {code: bucket(code, name) for code, name in labels.items()}
     workers, projects = {}, {}
+    reference_assignments, missing_reference_assignments = defaultdict(set), defaultdict(set)
     company_extra = 0
     staff_total, extra_total = 0, 0
     for item in source["annualEntries"]:
@@ -251,6 +254,10 @@ def report(source):
             "employmentType": fact["employmentType"], "category": fact["category"]})
         if fact["phase"] == "confirmed":
             provided = fact.get("salesRateProvided", int(fact["salesAmount"]) > 0)
+            reference_id = fact.get("assignmentId") or (fact["projectId"], fact["workerKey"])
+            reference_assignments[key].add(reference_id)
+            if not provided:
+                missing_reference_assignments[key].add(reference_id)
             worker["salesReferenceAvailable"] = worker.get("salesReferenceAvailable", False) or provided
             worker["salesReferenceIncomplete"] = worker.get("salesReferenceIncomplete", False) or not provided
         pid = int(fact["projectId"])
@@ -274,7 +281,7 @@ def report(source):
             projects.setdefault(pid, {**bucket(pid, p["project_name"]), "projectId": pid, "status": p["status_code"]})
             if pid not in saved_projects and source["year"] <= date.today().year:
                 missing_revenue.append({"projectId": pid, "projectName": p["project_name"], "year": source["year"],
-                    "reason": "선택 연도의 프로젝트 매출이 등록되지 않았습니다. 매출 발생 후 VAT 포함 연간 합계를 입력하세요. 발생 전이라면 미등록 상태를 유지할 수 있습니다."})
+                    "reason": "선택 연도의 프로젝트 매출이 등록되지 않았습니다. 매출 발생 후 VAT 별도 연간 합계를 입력하세요. 발생 전이라면 미등록 상태를 유지할 수 있습니다."})
         for revenue in source["projectRevenue"]:
             if project_phase(revenue["status_code"]) != "confirmed":
                 continue
@@ -297,10 +304,13 @@ def report(source):
     for department in depts.values():
         department["extraTargetAmount"] = str(department.get("extraTargetAmount", 0))
         department["staffTargetAmount"] = str(department["targetAmount"] - int(department["extraTargetAmount"]))
-    for worker in workers.values():
+    for key, worker in workers.items():
         worker["departmentName"] = depts[worker["department"]]["name"]
-        if project_revenue_mode:
-            worker.setdefault("salesReferenceAvailable", False)
+        worker["salesReferenceAssignmentCount"] = len(reference_assignments[key])
+        worker["salesReferenceMissingAssignmentCount"] = len(missing_reference_assignments[key])
+        # No confirmed allocation is zero activity, not an unentered sales rate.
+        worker.setdefault("salesReferenceAvailable", not reference_assignments[key])
+        worker.setdefault("salesReferenceIncomplete", False)
     for item in [*depts.values(), *workers.values(), *projects.values()]:
         item["unattributedSalesAmount"] = str(item.get("unattributedSalesAmount", 0))
         item["netProfit"] = item["salesAmount"] - item["costAmount"]

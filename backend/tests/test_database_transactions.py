@@ -163,7 +163,7 @@ class AuthenticationTransactionTests(unittest.TestCase):
 
     @staticmethod
     def _user_row():
-        return (1, "tester", "테스터", "tester@example.com", "USER", "N")
+        return (1, "tester", "테스터", "tester@example.com", "ADMIN", "N")
 
     def test_authentication_touch_commits_once(self):
         connection = _Connection(_Cursor(fetch_row=self._user_row()))

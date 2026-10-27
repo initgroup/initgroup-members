@@ -776,10 +776,11 @@
             query("#copyTemporaryAccessGuideButton")?.addEventListener("click", async () => {
                 if (!temporaryAccess) return;
                 const guide = [
-                    "[INIT Members 계정 안내]",
+                    `[${window.APP_NAME} 계정 안내]`,
                     `접속 주소: ${temporaryAccess.siteUrl}`,
                     `로그인 ID: ${temporaryAccess.loginId}`,
                     `임시 비밀번호: ${temporaryAccess.password}`,
+                    "관리자 등급이며 사용 승인된 계정만 로그인할 수 있습니다.",
                     "최초 로그인 후 안내에 따라 새 비밀번호로 반드시 변경해 주세요."
                 ].join("\n");
                 await Common.copyText(guide);

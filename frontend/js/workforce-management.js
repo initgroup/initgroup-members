@@ -15,6 +15,7 @@
     let root = null;
     let controller = null;
     let pageContext = null;
+    let annualRateReturnYear = null;
     let requestSequence = 0;
     let confirmedData = { projects: [], assignments: [], companies: [] };
     let references = { workers: [], actualCapacity: [] };
@@ -3711,6 +3712,10 @@
 
     function applyRouteContext(route = {}) {
         route = route || {};
+        annualRateReturnYear = route.returnPage === "annual-targets" ? selectedYear() : null;
+        const returnButton = query("#workforceManagementAnnualReturn");
+        returnButton.hidden = !annualRateReturnYear;
+        returnButton.textContent = `${annualRateReturnYear || ""}년 연간 참고 지표로 돌아가기`;
         if (!route.phase && !route.projectId && !route.assignmentId) return;
         boardBasis="project-status";
         query("#workforceManagementBasis").value=boardBasis;
@@ -3768,6 +3773,9 @@
             const initialYear = context.routeContext?.planYear || context.routeContext?.projectYear || new Date().getFullYear();
             initializeYears(initialYear);
             bindEvents();
+            query("#workforceManagementAnnualReturn").addEventListener("click", () => {
+                if (annualRateReturnYear) App.navigate("annual-targets", { context: { planYear: annualRateReturnYear, view: "workers" } });
+            }, { signal: controller.signal });
             [["Project","projects"],["Assignment","assignments"],["Available","available"],["Warning","warnings"]].forEach(([id,kind])=>query(`#workforceManagement${id}Metric`).addEventListener("click",()=>openMetricDetails(kind),{signal:controller.signal}));
             query("#workforceManagementAlertCount").addEventListener("click",()=>openMetricDetails("warnings"),{signal:controller.signal});
             renderAll();
@@ -3827,6 +3835,7 @@
             if (maximized) setMaximized(false);
             controller = null;
             pageContext = null;
+            annualRateReturnYear = null;
             root = null;
             confirmedData = { projects: [], assignments: [], companies: [] };
             references = { workers: [], actualCapacity: [] };

@@ -7,7 +7,7 @@
                     <img class="login-logo" src="./assets/init-logo.png" alt="INIT">
                     <span class="login-brand-badge">EXECUTIVE PORTAL</span>
                 </div>
-                <p id="loginHeroEyebrow" class="login-hero-eyebrow">INIT MEMBERS ONLY</p>
+                <p id="loginHeroEyebrow" class="login-hero-eyebrow">ADMINISTRATORS ONLY</p>
                 <h1 id="loginTitle">
                     <span class="login-title-line">사업과 인력의 다음 해를,</span>
                     <span class="login-title-line">한 화면에서 결정합니다</span>
@@ -45,16 +45,17 @@
             </div>
 
             <footer class="login-intro-footer">
-                <small id="loginAppName">INIT Members</small>
+                <small id="loginAppName">(주) 인아이티 경영정보 시스템</small>
                 <span>Executive Workspace</span>
             </footer>
         </section>
 
         <section class="login-card" aria-labelledby="loginFormTitle">
             <header>
-                <p class="login-card-eyebrow">EXECUTIVE ONLY</p>
-                <h2 id="loginFormTitle">인아이티 경영진 전용 로그인</h2>
-                <p>승인된 경영진 및 업무 관리자 계정만 접속할 수 있습니다.</p>
+                <p class="login-card-eyebrow">관리자 전용 · 모든 금액 VAT 별도</p>
+                <h2 id="loginFormTitle">관리자 로그인</h2>
+                <p>(주) 인아이티 경영정보 시스템</p>
+                <p>관리자 등급으로 등록되고 사용 승인된 계정만 로그인할 수 있습니다.</p>
             </header>
 
             <form id="loginForm" class="login-form" autocomplete="off">
@@ -74,8 +75,8 @@
                 <button id="openSignupButton" class="login-support-link" type="button">
                     <span class="login-support-icon" aria-hidden="true">＋</span>
                     <span>
-                        <strong>경영진 계정 신청</strong>
-                        <small>경영 시스템 이용 권한 요청</small>
+                        <strong>관리자 이용 권한 신청</strong>
+                        <small>관리자 등급 부여 및 사용 승인 필요</small>
                     </span>
                 </button>
                 <button id="openAdminContactButton" class="login-support-link" type="button">
@@ -87,7 +88,7 @@
                 </button>
             </div>
 
-            <p class="login-security-note"><span aria-hidden="true">●</span> 경영진 전용 시스템은 서버 세션으로 안전하게 보호됩니다.</p>
+            <p class="login-security-note"><span aria-hidden="true">●</span> 관리자 등급만 이용할 수 있는 경영정보 시스템입니다.</p>
         </section>
     </div>
 
@@ -128,8 +129,8 @@
         <form id="signupForm">
             <header class="dialog-header">
                 <div>
-                    <h2 id="signupDialogTitle">경영진 계정 신청</h2>
-                    <p>신청한 계정은 관리자 승인 후 사용할 수 있습니다. 최초 관리자 가입에는 초기 관리자 키가 필요합니다.</p>
+                    <h2 id="signupDialogTitle">관리자 이용 권한 신청</h2>
+                    <p>신청 계정은 관리자 등급 부여와 사용 승인이 모두 필요합니다. 최초 관리자 가입에는 초기 관리자 키가 필요합니다.</p>
                 </div>
                 <button class="dialog-close" type="button" data-dialog-close aria-label="닫기">×</button>
             </header>
@@ -158,8 +159,8 @@
                     <label class="field field-span">
                         <span class="required">가입 유형</span>
                         <select id="signupRoleCode" class="select">
-                            <option value="USER">경영진 조회 계정</option>
-                            <option value="ADMIN">업무 관리자</option>
+                            <option value="USER">이용 권한 신청 (관리자 등급 승인 대기)</option>
+                            <option value="ADMIN">최초 관리자 가입 (시스템 초기화 전용)</option>
                         </select>
                     </label>
                     <label id="signupAdminKeyField" class="field field-span" hidden>

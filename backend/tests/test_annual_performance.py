@@ -81,6 +81,73 @@ class AnnualPerformanceTests(unittest.TestCase):
         self.assertFalse(any("단가" in w for w in result["warnings"]))
         self.assertFalse(result["workers"][0]["salesReferenceAvailable"])
 
+    def test_reference_values_recalculate_after_a_missing_rate_is_entered(self):
+        s = source()
+        s["projectRevenue"] = [{"project_id": 10, "project_name": "Project", "status_code": "CONTRACTED", "amount": 9000}]
+        s["assignments"][0]["salesUnitPrice"] = "0"
+        missing = report(s)["workers"][0]
+        self.assertFalse(missing["salesReferenceAvailable"])
+        self.assertEqual(1, missing["salesReferenceMissingAssignmentCount"])
+        s["assignments"][0]["salesUnitPrice"] = "1500"
+        result = report(s)
+        worker = result["workers"][0]
+        self.assertTrue(worker["salesReferenceAvailable"])
+        self.assertFalse(worker["salesReferenceIncomplete"])
+        self.assertEqual("1500", worker["salesAmount"])
+        self.assertEqual("900", worker["netProfit"])
+        self.assertEqual(0, worker["salesReferenceMissingAssignmentCount"])
+        self.assertEqual("9000", result["summary"]["salesAmount"])
+
+    def test_partial_rates_keep_entered_revenue_and_subtract_all_labor_costs(self):
+        s = source()
+        s["assignments"].append({**copy.deepcopy(s["assignments"][0]), "assignmentId": 2, "salesUnitPrice": "0"})
+        result = report(s)
+        worker = result["workers"][0]
+        self.assertTrue(worker["salesReferenceAvailable"])
+        self.assertTrue(worker["salesReferenceIncomplete"])
+        self.assertEqual("1000", worker["salesAmount"])
+        self.assertEqual("1200", worker["costAmount"])
+        self.assertEqual("-200", worker["netProfit"])
+        self.assertEqual(2, worker["salesReferenceAssignmentCount"])
+        self.assertEqual(1, worker["salesReferenceMissingAssignmentCount"])
+        self.assertEqual("1000", result["facts"][0]["salesUnitPrice"])
+
+    def test_multiple_missing_months_count_one_assignment(self):
+        s = source()
+        s["assignments"][0]["salesUnitPrice"] = "0"
+        s["assignments"][0]["monthlyAllocations"].append({"month": "2026-02", "mm": 1})
+        worker = report(s)["workers"][0]
+        self.assertEqual(1, worker["salesReferenceAssignmentCount"])
+        self.assertEqual(1, worker["salesReferenceMissingAssignmentCount"])
+        self.assertEqual("1200", worker["costAmount"])
+
+    def test_target_without_confirmed_allocation_is_zero_activity_not_missing_rate(self):
+        s = source()
+        person = {"userId": 1, "name": "Test", "department": "APP", "departmentName": "APP", "employmentType": "REGULAR"}
+        s["annualEntries"] = [api.entry("STAFF", 1, 1001, person=person)]
+        s["assignments"] = []
+        s["projectRevenue"] = []
+        worker = report(s)["workers"][0]
+        self.assertTrue(worker["salesReferenceAvailable"])
+        self.assertEqual(0, worker["salesReferenceAssignmentCount"])
+        self.assertEqual("0", worker["salesAmount"])
+        self.assertEqual("0", worker["netProfit"])
+
+    def test_closed_month_rates_are_view_only_and_keep_recorded_amounts(self):
+        s = source()
+        january = report(s)["facts"]
+        s["closed"] = {"2026-01": {"facts": january}}
+        s["assignments"][0]["salesUnitPrice"] = "2000"
+        s["assignments"][0]["monthlyAllocations"].append({"month": "2026-02", "mm": 1})
+        result = report(s)
+        closed = next(f for f in result["facts"] if f["month"] == "2026-01")
+        live = next(f for f in result["facts"] if f["month"] == "2026-02")
+        self.assertEqual("1000", closed["salesAmount"])
+        self.assertFalse(closed["rateEditable"])
+        self.assertEqual("2000", live["salesAmount"])
+        self.assertTrue(live["rateEditable"])
+        self.assertTrue(january[0]["rateEditable"])
+
     def test_annual_project_revenue_keeps_hr_shares_and_exact_won(self):
         s=source();s["history"].append(history("2026-01-16","DATA",employment="CONTRACT"))
         s["projectRevenue"]=[{"project_id":10,"project_name":"Project","status_code":"CONTRACTED","amount":1001}]
@@ -135,7 +202,7 @@ class AnnualPerformanceTests(unittest.TestCase):
         result=report(s)
         self.assertEqual("1000",result["summary"]["salesAmount"])
         self.assertEqual("299",result["summary"]["netProfit"])
-        self.assertEqual(january,result["facts"])
+        self.assertEqual([{**fact, "rateEditable": False} for fact in january], result["facts"])
 
     def test_year_snapshot_survives_hr_project_target_and_cost_changes(self):
         import json

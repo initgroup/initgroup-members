@@ -12,6 +12,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from backend.auth_context import authenticate_request, require_admin_role
+from backend.site_identity import SITE_NAME
 from backend.database import get_db_connection
 from backend.database_errors import oracle_error_code, raise_database_http_error
 from backend.database_helper import SqlLoader
@@ -372,7 +373,7 @@ def dashboard(
                 "annualPerformance": annual_performance,
                 "annualTrend": revenue_trend,
                 "financials": financials,
-                "appName": os.getenv("APP_NAME", "INIT Members"),
+                "appName": SITE_NAME,
                 "user": user,
                 "dashboardType": "executive",
                 "planYear": plan_year,
@@ -452,7 +453,7 @@ def my_dashboard(request: Request):
         return {
             "status": "success",
             "data": {
-                "appName": os.getenv("APP_NAME", "INIT Members"),
+                "appName": SITE_NAME,
                 "user": user,
                 "dashboardType": "personal",
                 "generatedAt": datetime.now().isoformat(),

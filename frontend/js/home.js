@@ -47,7 +47,7 @@
     }
     function openFinancialIssues() {
         const missing=dashboardData?.annualPerformance?.missingRevenue || [];
-        detailLayer.open({title:"연간 매출 미등록 프로젝트",description:"매출이 발생한 프로젝트는 해당 결산연도의 VAT 포함 매출 합계를 입력하세요. 발생 전이라면 미등록으로 둘 수 있습니다.",
+        detailLayer.open({title:"연간 매출 미등록 프로젝트",description:"매출이 발생한 프로젝트는 해당 결산연도의 VAT 별도 매출 합계를 입력하세요. 발생 전이라면 미등록으로 둘 수 있습니다.",
             groups:missing.map(issue=>({title:issue.projectName,reasons:[issue.reason],facts:[["결산연도",`${issue.year}년`]],
                 actions:[{key:`revenue-${issue.projectId}`,label:`${issue.year}년 매출 입력`,run:()=>openProjectRevenue(issue.projectId)}]}))});
     }
@@ -199,7 +199,7 @@
                 .forEach(text=>row.appendChild(Common.dom.element("td",{text})));trendBody.appendChild(row);
         });
         if (!trend.length) chart.appendChild(emptyState("최근 3년 자료를 조회할 수 없습니다. 새로고침해 주세요."));
-        query("#homeAnnualRevenueDescription").textContent=trend.length?`${trend[0].year}–${trend.at(-1).year}년 · VAT 포함`:"연간 자료 조회 필요";
+        query("#homeAnnualRevenueDescription").textContent=trend.length?`${trend[0].year}–${trend.at(-1).year}년 · VAT 별도`:"연간 자료 조회 필요";
         (annual.projects || []).filter(p=>["CONTRACTED","IN_PROGRESS","COMPLETED"].includes(p.status)).forEach(project=>{
             const row=Common.dom.element("tr"),button=Common.dom.element("button",{type:"button",className:"button button-secondary button-small",text:"매출 입력"});
             button.addEventListener("click",()=>openProjectRevenue(project.projectId),{signal:controller.signal});
@@ -355,11 +355,11 @@
 
         query("#homeAwardLabel").textContent = "확정 수주금액";
         query("#homeWeightedAward").textContent = money(projectSummary.contractAmountVat);
-        query("#homeAwardDetail").textContent = `확정 ${formattedNumber(projectSummary.awardedCount || 0)}건 · VAT 포함`;
+        query("#homeAwardDetail").textContent = `확정 ${formattedNumber(projectSummary.awardedCount || 0)}건 · VAT 별도`;
         query("#homeSalesLabel").textContent = annual?.revenueBasis==="HISTORICAL_TOTALS"?"과거 회사 매출 총액":"연간 프로젝트 매출";
         query("#homePlannedSales").textContent = confirmed ? money(sales) : "—";
         const missing=annual?.missingRevenue || [];
-        query("#homeSalesDetail").textContent=annual?.revenueBasis==="HISTORICAL_TOTALS"?"과거 소급 · VAT 포함":missing.length?`매출 미등록 ${missing.length}개 프로젝트`:"결산연도 기준 · VAT 포함";
+        query("#homeSalesDetail").textContent=annual?.revenueBasis==="HISTORICAL_TOTALS"?"과거 소급 · VAT 별도":missing.length?`매출 미등록 ${missing.length}개 프로젝트`:"결산연도 기준 · VAT 별도";
         query("#homeSalesDetail").classList.toggle("is-incomplete",Boolean(missing.length));
         query("#homeOperatingProfit").textContent = confirmed ? profit==null?"미입력":money(profit) : "—";
         query("#homeProfitRate").textContent=annual?.revenueBasis==="HISTORICAL_TOTALS"?profit==null?"과거 소급 · 순이익 미입력":"과거 소급 · 입력한 순이익 기준":confirmed?`이익률 ${profitRate(profit,sales).toFixed(1)}% · 입력 원가·비용 기준`:"연간 자료 조회 필요";

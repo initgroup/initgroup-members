@@ -916,7 +916,10 @@
     async function boot() {
         const appName = window.APP_NAME || "웹 사이트";
         const brandName = document.getElementById("appBrandName");
-        if (brandName) brandName.textContent = appName;
+        if (brandName) {
+            brandName.setAttribute("aria-label", appName);
+            brandName.title = appName;
+        }
         window.history.replaceState(
             {
                 ...(window.history.state || {}),

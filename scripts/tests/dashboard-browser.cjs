@@ -332,16 +332,19 @@ function fixture(page, menuEntry = false) {
         await evaluate("Pages['workforce-management'].activate({routeContext:{planYear:2026,phase:'planning'}})");
         assert.equal(await evaluate("document.querySelectorAll('.workforce-management-lane').length"),1);
         assert.equal(await evaluate("document.querySelector('[data-workforce-filter=planning]').getAttribute('aria-pressed')"),"true");
-        await evaluate("Pages['workforce-management'].activate({routeContext:{planYear:2026,projectId:1,assignmentId:1,priceField:'sales'}})");
+        await evaluate("Pages['workforce-management'].activate({routeContext:{planYear:2026,projectId:1,assignmentId:1,priceField:'sales',returnPage:'annual-targets'}})");
         assert.equal(await evaluate("document.querySelector('#workforceManagementQuickDialog').open"),true);
         assert.equal(await evaluate("document.activeElement.id"),"workforceManagementQuickSales");
+        assert.equal(await evaluate("document.querySelector('#workforceManagementAnnualReturn').hidden"),false);
         assert.equal(await evaluate("document.querySelector('#workforceManagementQuickSales').closest('details')"),null);
         assert.equal(await evaluate("(()=>{const field=document.querySelector('#workforceManagementQuickSales').getBoundingClientRect(),body=document.querySelector('#workforceManagementQuickDialog .dialog-body').getBoundingClientRect();return field.top>=body.top && field.bottom<=body.bottom})()"),true);
         await screenshot("workforce-sales-price-input");
-        await evaluate("Pages['workforce-management'].activate({routeContext:{planYear:2026,projectId:1,assignmentId:1,priceField:'cost'}})");
+        await evaluate("Pages['workforce-management'].activate({routeContext:{planYear:2026,projectId:1,assignmentId:1,priceField:'cost',returnPage:'annual-targets'}})");
         assert.equal(await evaluate("document.activeElement.id"),"workforceManagementQuickCost");
         assert.equal(await evaluate("document.querySelector('#workforceManagementProject').value"),"1");
         assert.equal(await evaluate("Pages['workforce-management'].beforeLeave()"),true);
+        await evaluate("document.querySelector('#workforceManagementAnnualReturn').click()");
+        assert.deepEqual(await evaluate("navigation"),{page:"annual-targets",options:{context:{planYear:2026,view:"workers"}}});
         const boardPeopleFixture={...bootstrap,confirmed:{...bootstrap.confirmed,assignments:[
             ...assignments.map(row=>row.assignmentId===20?{...row,monthlyAllocations:[1,4,5,6].map(m=>({month:`2026-${String(m).padStart(2,'0')}`,mm:1}))}:
                 row.assignmentId===3?{...row,monthlyAllocations:row.monthlyAllocations.map(a=>a.month==='2026-01'?{...a,mm:0.5}:a)}:row),
@@ -576,6 +579,61 @@ function fixture(page, menuEntry = false) {
         await evaluate("Pages['workforce-load-detail'].destroy()");
         await send("Emulation.setDeviceMetricsOverride",{width:1600,height:1100,deviceScaleFactor:1,mobile:false});
         await open("annual-targets");
+        await evaluate(`(async () => {
+            window.referenceReviewOriginal=structuredClone(annualFixture.performance);
+            window.referenceReviewCallCount=apiCalls.length;
+            const base={department:annualFixture.departments[0].code,departmentName:annualFixture.departments[0].label,employmentType:'REGULAR',targetAmount:'2000',costAmount:'600',salesAmount:'0',salesReferenceAssignmentCount:1,salesReferenceMissingAssignmentCount:1,salesReferenceAvailable:false,salesReferenceIncomplete:true};
+            annualFixture.performance.workers=[{...base,key:'USER:1',name:'단가 대기'},{...base,key:'USER:2',name:'일부 입력',salesAmount:'1000',costAmount:'1200',salesReferenceAssignmentCount:2,salesReferenceAvailable:true},{...base,key:'USER:3',name:'투입 없음',costAmount:'0',salesReferenceAvailable:true,salesReferenceIncomplete:false,salesReferenceAssignmentCount:0,salesReferenceMissingAssignmentCount:0}];
+            const fact={phase:'confirmed',projectId:1,projectName:'참고단가 검증 사업',assignmentId:1,workerKey:'USER:1',department:base.department,employmentType:'REGULAR',month:'2025-01',mm:1,salesAmount:'0',costAmount:'600',salesUnitPrice:'0',salesRateProvided:false,rateEditable:true};
+            annualFixture.performance.facts=[fact,{...fact,workerKey:'USER:2',assignmentId:2,salesAmount:'1000',salesUnitPrice:'1000',salesRateProvided:true},{...fact,workerKey:'USER:2',assignmentId:3}];
+            await Pages['annual-targets'].activate({routeContext:{planYear:2025,view:'workers'}});
+        })()`);
+        assert.equal(await evaluate("document.querySelector('#annualTargetsWorkerReferences').open"),true);
+        assert.match(await evaluate("document.querySelector('#annualTargetsWorkers tr:first-child').textContent"),/단가 입력 필요.*계산 대기/);
+        assert.match(await evaluate("document.querySelector('#annualTargetsWorkers tr:nth-child(2)').textContent"),/1,000원.*일부 단가 미입력.*50%.*일부 단가 미입력.*-200원.*일부 단가 미입력/);
+        assert.match(await evaluate("document.querySelector('#annualTargetsWorkers tr:nth-child(3)').textContent"),/0원.*0%.*0원.*확정 투입 없음/);
+        await evaluate("document.querySelector('#annualTargetsWorkerReferences').scrollIntoView({block:'center',behavior:'instant'})");
+        await screenshot("annual-reference-rates-partial");
+        await evaluate("document.querySelector('#annualTargetsWorkers button').click()");
+        assert.equal(await evaluate("document.querySelector('#annualTargetsRatesDialog').open"),true);
+        assert.match(await evaluate("document.querySelector('#annualTargetsRatesDialog').textContent"),/참고단가 검증 사업/);
+        await screenshot("annual-reference-rate-details");
+        await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+        await screenshot("annual-reference-rate-details-mobile");
+        await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
+        await evaluate(`
+            window.referenceNavigationAllowed=null;
+            window.App.navigate=async(page,options)=>{window.referenceNavigationAllowed=await Pages['annual-targets'].beforeLeave({nextPageCode:page,preservesState:true,closing:false});window.navigation={page,options};};
+            document.querySelector('#annualTargetsEditor input').value='240,000,000';document.querySelector('#annualTargetsEditor input').dispatchEvent(new Event('input'));
+            window.confirmResult=false;
+            document.querySelector('#annualTargetsRatesDialog [data-detail-action]').click();
+        `);
+        await delay(50);
+        assert.equal(await evaluate("referenceNavigationAllowed"),true);
+        assert.deepEqual(await evaluate("navigation"),{page:"workforce-management",options:{context:{planYear:2025,phase:"confirmed",projectId:1,assignmentId:1,priceField:"sales",returnPage:"annual-targets"}}});
+        await evaluate(`(async () => {
+            annualFixture.revisions.staff=7;
+            Object.assign(annualFixture.performance.workers[0],{salesAmount:'1500',salesReferenceAvailable:true,salesReferenceIncomplete:false,salesReferenceMissingAssignmentCount:0});
+            Object.assign(annualFixture.performance.facts[0],{salesAmount:'1500',salesUnitPrice:'1500',salesRateProvided:true});
+            await Pages['annual-targets'].activate({routeContext:{planYear:2025,view:'workers'}});
+        })()`);
+        assert.equal(await evaluate("document.querySelector('#annualTargetsEditor input').value"),"240,000,000");
+        assert.match(await evaluate("document.querySelector('#annualTargetsWorkers tr:first-child').textContent"),/1,500원.*75%.*900원/);
+        assert.equal(await evaluate("Pages['annual-targets'].hasUnsavedChanges()"),true);
+        await evaluate("document.querySelector('#annualTargetsStaffForm').requestSubmit()");
+        await delay(50);
+        assert.equal(await evaluate("apiCalls.filter(c=>c.method==='PUT'&&c.url.endsWith('/staff')).at(-1).body.revision"),0);
+        assert.match(await evaluate("document.querySelector('#annualTargetsStaffStatus').textContent"),/다른 사용자가 변경/);
+        await evaluate(`(async () => {
+            window.confirmResult=true;
+            annualFixture.revisions.staff=0;
+            annualFixture.performance=referenceReviewOriginal;
+            window.App.navigate=(page,options)=>{window.navigation={page,options}};
+            await Pages['annual-targets'].activate({routeContext:{planYear:2025}});
+            document.querySelector('#annualTargetsRefresh').click();
+            window.apiCalls.length=window.referenceReviewCallCount;
+        })()`);
+        await delay(50);
         for (const [view,id] of [['company','annualTargetsCompanyResults'],['projects','annualTargetsProjectResults'],['staff','annualTargetsStaffForm']]) {
             await evaluate(`Pages['annual-targets'].activate({routeContext:{planYear:2025,view:'${view}'}})`);
             assert.equal(await evaluate("document.activeElement.id"),id);

@@ -304,7 +304,7 @@ def signup(payload: SignupRequest):
             "message": (
                 "최초 관리자 계정을 생성했습니다."
                 if first_user
-                else "가입 신청을 완료했습니다. 관리자 승인 후 로그인할 수 있습니다."
+                else "가입 신청을 완료했습니다. 관리자 등급 부여 및 사용 승인 후 로그인할 수 있습니다."
             ),
             "data": {
                 "loginId": login_id,
@@ -362,6 +362,8 @@ def login(payload: LoginRequest, request: Request, response: Response):
             raise HTTPException(status_code=401, detail="로그인 ID 또는 비밀번호가 올바르지 않습니다.")
         if row[5] != "Y":
             raise HTTPException(status_code=403, detail="관리자 승인이 완료되지 않은 계정입니다.")
+        if str(row[6] or "").strip().upper() != "ADMIN":
+            raise HTTPException(status_code=403, detail="관리자 등급의 계정만 로그인할 수 있습니다.")
 
         token = create_login_session(conn, int(row[0]))
         conn.commit()
