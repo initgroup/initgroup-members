@@ -125,7 +125,7 @@ Copy-Item .env.example .env
 
 `APP_NOTICE_FILE_MAX_BYTES`는 multipart 처리 후 handler가 읽는 파일 하나의 한도이며, 들어오는 HTTP body 자체를 차단하는 ingress 한도가 아닙니다. 인터넷 운영 환경에서는 reverse proxy 또는 ASGI 계층의 request-body limit와 사용자별 업로드 quota를 별도로 설정합니다. 현재 첨부 다운로드는 최대 50MB로 제한된 BLOB 전체를 메모리 응답으로 만들므로, 동시 다운로드 수와 서버 메모리도 함께 산정합니다.
 
-브라우저 셸의 표시 이름은 `frontend/config/app.config.js`의 `window.APP_NAME`에서 관리하며 서버의 `backend/site_identity.py`와 같은 정식 명칭을 사용합니다. 사이드바에서는 작은 인아이티 로고 오른쪽에 `경영정보시스템`을 큰 글씨 한 줄로 강조하고, 접근성 이름과 툴팁에는 정식 명칭 전체를 표시합니다.
+브라우저 셸의 표시 이름은 `frontend/config/app.config.js`의 `window.APP_NAME`에서 관리하며 서버의 `backend/site_identity.py`와 같은 정식 명칭을 사용합니다. 브라우저 탭 제목은 `window.APP_BROWSER_TITLE`의 `인아이티 | 경영정보시스템`으로 고정하고 로그인·메뉴 이동 시에도 유지합니다. 탭 아이콘은 `frontend/assets/favicon.svg`에 기존 인아이티 로고의 심볼을 표시합니다. 사이드바에서는 작은 인아이티 로고 오른쪽에 `경영정보시스템`을 큰 글씨 한 줄로 강조하고, 접근성 이름과 툴팁에는 정식 명칭 전체를 표시합니다.
 
 내부 임직원 부서는 `frontend/config/departments.json`의 `code`, `label`, `displayOrder`로 관리합니다. 라벨이나 출력순서 변경은 서버 재시작 후 반영되며, 기존 코드를 변경할 때는 `database/INIT_SYSTEM_ALT.sql`의 데이터 보정 경로도 함께 수정해야 합니다.
 

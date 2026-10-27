@@ -313,7 +313,7 @@
         const appName = window.APP_NAME || "웹 사이트";
 
         document.body.classList.toggle("auth-screen", isLogin);
-        document.title = isLogin ? `로그인 · ${appName}` : `${page?.title || page?.label || appName} · ${appName}`;
+        document.title = window.APP_BROWSER_TITLE || "인아이티 | 경영정보시스템";
 
         const title = document.getElementById("pageTitle");
         const eyebrow = document.getElementById("appHeaderEyebrow");
