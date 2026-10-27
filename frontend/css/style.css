@@ -7202,6 +7202,10 @@ html.has-workforce-board-maximized {
     overflow: auto;
 }
 
+.workforce-management-quick-dialog .dialog-footer .button {
+    white-space: nowrap;
+}
+
 .workforce-management-quick-dialog .dialog-header p:last-child {
     margin: 4px 0 0;
     color: var(--color-muted);
@@ -7231,7 +7235,8 @@ html.has-workforce-board-maximized {
 .workforce-management-quick-period {
     display: grid;
     margin-top: 12px;
-    grid-template-columns: minmax(120px, 0.7fr) repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
     gap: 10px;
 }
 
@@ -7248,8 +7253,33 @@ html.has-workforce-board-maximized {
 .workforce-management-quick-detail-grid {
     display: grid;
     margin-top: 12px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
     gap: 10px;
+}
+
+.workforce-management-quick-field-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.workforce-management-quick-field-label small {
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--color-muted);
+    background: #f1f5f9;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.workforce-management-quick-field-help {
+    color: var(--color-muted);
+    font-size: 0.68rem;
+    line-height: 1.5;
 }
 
 .workforce-management-quick-mm {
@@ -7859,6 +7889,25 @@ html.has-workforce-management-editor {
     .workforce-management-quick-period,
     .workforce-management-quick-detail-grid {
         grid-template-columns: 1fr;
+    }
+
+    .workforce-management-quick-dialog .dialog-footer {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .workforce-management-quick-dialog .dialog-footer .button {
+        min-width: 0;
+        padding-inline: 10px;
+    }
+
+    .workforce-management-quick-dialog .dialog-footer-spacer {
+        display: none;
+    }
+
+    #workforceManagementQuickSubmit {
+        grid-column: 1 / -1;
     }
 
     .workforce-management-quick-mm {

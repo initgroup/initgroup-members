@@ -156,12 +156,12 @@
             <div class="dialog-body">
                 <div class="workforce-management-quick-worker"><strong id="workforceManagementQuickWorker"></strong><span id="workforceManagementQuickCompany"></span></div>
                 <div class="workforce-management-quick-detail-grid" aria-label="매출·원가 단가 입력">
-                    <label class="field"><span>개인 비교용 매출단가 (선택 · 원 / M/M)</span><input id="workforceManagementQuickSales" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickPriceHelp"></label>
-                    <label class="field" data-workforce-admin-cost><span>원가단가 (원 / M/M)</span><input id="workforceManagementQuickCost" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickPriceHelp"></label>
+                    <label class="field"><span class="workforce-management-quick-field-label"><span>개인 참고매출 단가</span><small>선택</small></span><input id="workforceManagementQuickSales" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickSalesUnit workforceManagementQuickPriceHelp"><small id="workforceManagementQuickSalesUnit" class="workforce-management-quick-field-help">원/M/M · VAT 별도</small></label>
+                    <label class="field" data-workforce-admin-cost><span>인력 원가단가</span><input id="workforceManagementQuickCost" class="input" type="number" min="0" step="1" value="0" aria-describedby="workforceManagementQuickCostUnit workforceManagementQuickPriceHelp"><small id="workforceManagementQuickCostUnit" class="workforce-management-quick-field-help">원/M/M · VAT 별도</small></label>
                 </div>
-                <p id="workforceManagementQuickPriceHelp" class="workforce-management-quick-period-note">매출단가(원/M/M · VAT 별도)를 입력하고 ‘저장하고 보드 반영’을 누르면 연간 목표·실적의 개인 참고매출·참고 달성률·참고손익에 반영됩니다. 회사 매출은 사업·입찰 관리의 연도별 매출액으로 계산합니다. 원가단가는 전체 인력원가에 반영됩니다.</p>
+                <p id="workforceManagementQuickPriceHelp" class="workforce-management-quick-period-note">매출단가는 개인 참고매출·달성률·손익 계산용입니다. 입력 후 ‘저장하고 보드 반영’을 누르세요. 회사 매출은 사업·입찰 관리의 연도별 매출을 사용하며, 원가단가는 인력원가에 반영됩니다.</p>
                 <div class="workforce-management-quick-period">
-                    <label class="field"><span id="workforceManagementQuickStatusLabel">투입 구분 · 진행상태 자동 적용</span><select id="workforceManagementQuickAssignmentStatus" class="select" required><option value="CONFIRMED">확정 투입</option><option value="PLANNED">계획 투입</option></select></label>
+                    <label class="field"><span id="workforceManagementQuickStatusLabel">투입 구분</span><select id="workforceManagementQuickAssignmentStatus" class="select" required aria-describedby="workforceManagementQuickStatusHelp"><option value="CONFIRMED">확정 투입</option><option value="PLANNED">계획 투입</option></select><small id="workforceManagementQuickStatusHelp" class="workforce-management-quick-field-help">프로젝트 진행상태 자동 적용</small></label>
                     <label class="field"><span>투입 시작일</span><input id="workforceManagementQuickStart" class="input" type="date" required></label>
                     <label class="field"><span>투입 종료일</span><input id="workforceManagementQuickEnd" class="input" type="date" required></label>
                 </div>

@@ -2343,7 +2343,8 @@
         query("#workforceManagementQuickStart").value = dateText(pick(assignment, "assignmentStartDate", "ASSIGNMENT_START_DATE"));
         query("#workforceManagementQuickEnd").value = dateText(pick(assignment, "assignmentEndDate", "ASSIGNMENT_END_DATE"));
         query("#workforceManagementQuickAssignmentStatus").value = assignmentStatusCode(lane, assignment);
-        query("#workforceManagementQuickStatusLabel").textContent = boardBasis === "project-status" ? "투입 구분 · 진행상태 자동 적용" : "기존 계획안 투입 구분";
+        query("#workforceManagementQuickStatusLabel").textContent = "투입 구분";
+        query("#workforceManagementQuickStatusHelp").textContent = boardBasis === "project-status" ? "프로젝트 진행상태 자동 적용" : "기존 계획안의 투입 구분";
         query("#workforceManagementQuickAssignmentStatus").disabled = boardBasis === "project-status" || lane.type === "planning";
         query("#workforceManagementQuickAssignmentStatus").title = boardBasis === "project-status" ? "프로젝트 진행상태에서 자동 결정됩니다." : "기존 계획안의 투입 구분";
         const allocations = assignmentAllocations(assignment);
