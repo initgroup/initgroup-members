@@ -127,6 +127,8 @@ Copy-Item .env.example .env
 
 브라우저 셸의 표시 이름은 `frontend/config/app.config.js`의 `window.APP_NAME`에서 관리하며 서버의 `backend/site_identity.py`와 같은 정식 명칭을 사용합니다. 브라우저 탭 제목은 `window.APP_BROWSER_TITLE`의 `인아이티 | 경영정보시스템`으로 고정하고 로그인·메뉴 이동 시에도 유지합니다. 탭 아이콘은 `frontend/assets/favicon.svg`에 기존 인아이티 로고의 심볼을 표시합니다. 사이드바에서는 작은 인아이티 로고 오른쪽에 `경영정보시스템`을 큰 글씨 한 줄로 강조하고, 접근성 이름과 툴팁에는 정식 명칭 전체를 표시합니다.
 
+홈 화면 바로가기 아이콘은 홈페이지(`initgroup-homepage`)와 동일한 `frontend/apple-touch-icon.png`(180×180 PNG)를 사용하며, 일반 바로가기용 `frontend/favicon.ico`도 제공합니다. 두 파일은 사이트 루트에서 로그인 없이 제공되고 `frontend/index.html`에서 명시적으로 연결합니다. 아이콘을 교체할 때는 링크의 버전도 갱신합니다. 배포 후 iPhone Safari에서 사이트를 새로고침하고 `공유 → 홈 화면에 추가`로 확인합니다. 기존 바로가기에 이전 아이콘이 남으면 해당 바로가기를 삭제하고 다시 추가합니다.
+
 내부 임직원 부서는 `frontend/config/departments.json`의 `code`, `label`, `displayOrder`로 관리합니다. 라벨이나 출력순서 변경은 서버 재시작 후 반영되며, 기존 코드를 변경할 때는 `database/INIT_SYSTEM_ALT.sql`의 데이터 보정 경로도 함께 수정해야 합니다.
 
 ## 개발 서버 실행
